@@ -48,6 +48,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "core/command_line_parser.h"
 #include "core/process_streaming.h"
 #include "core/process_whole.h"
+#include "core/mem_info.h"
 #include <cctype>
 
 // ----------------------------------------------------------------------------
@@ -67,7 +68,7 @@ void help()
 	logit_s<< "--update-theta : <theta_pv_string> Update the theta dataset value using theta_pv_string as new pv string ref.\n";
     logit_s<< "--update-scalers : If scalers pv's have been changed in maps_fit_parameters_override.txt file, you can run this to just update scaler values without refitting.\n";
     logit_s<<"--quick-and-dirty : Integrate the detector range into 1 spectra.\n";
-//	logit_s<< "--mem-limit <limit> : Limit the memory usage. Append M for megabytes or G for gigabytes\n";
+	logit_s<< "--mem-limit <limit> : Limit the memory usage. Append M for megabytes or G for gigabytes\n";
     logit_s<<"--optimize-fit-override-params : <int> Integrate the 8 largest mda datasets and fit with multiple params.\n"<<
                "  1 = matrix batch fit\n  2 = batch fit without tails\n  3 = batch fit with tails\n  4 = batch fit with free E, everything else fixed \n";
     logit_s<<"--optimizer <lmfit, mpfit> : Choose which optimizer to use for --optimize-fit-override-params or matrix fit routine \n";
@@ -102,7 +103,9 @@ int main(int argc, char *argv[])
     std::string dataset_dir;
     std::string whole_command_line = "";
     bool optimize_fit_override_params = false;
-
+    long long total_mem = get_total_mem();
+    // if mem limit is set then we force streaming.
+    bool force_streaming = false;
     //Performance measure
     std::chrono::time_point<std::chrono::system_clock> start, end;
 
@@ -367,6 +370,42 @@ int main(int argc, char *argv[])
 		}
 	}
 
+
+    if (clp.option_exists("--mem-limit"))
+    {
+        std::string str_mem_limit = clp.get_option("--mem-limit");
+
+        //to lower
+        std::transform(str_mem_limit.begin(), str_mem_limit.end(), str_mem_limit.begin(), [](unsigned char c) { return std::tolower(c); });
+        analysis_job.mem_limit = get_available_mem();
+        // look for g for Gb
+        int g_mem_idx = str_mem_limit.find('g');
+        int m_mem_idx = str_mem_limit.find('m');
+        if (g_mem_idx != std::string::npos)
+        {
+            string numeral = str_mem_limit.substr(0, g_mem_idx);
+            long long g_limit = stoll(numeral);
+            g_limit = g_limit * (1024 * 1024 * 1034);
+            if (g_limit < total_mem)
+            {
+                analysis_job.mem_limit = g_limit;
+            }
+        }
+        else if(m_mem_idx != std::string::npos)
+        {
+            string numeral = str_mem_limit.substr(0, g_mem_idx);
+            long long g_limit = stoll(numeral);
+            g_limit = g_limit * (1024 * 1034);
+            if (g_limit < total_mem)
+            {
+                analysis_job.mem_limit = g_limit;
+            }
+        }
+        force_streaming = true;
+
+        data_struct::Stream_Block_Allocator::inst()->set_mem_limit(analysis_job.mem_limit);
+    }
+
     bool update_h5_without_fitting = analysis_job.generate_average_h5 || analysis_job.add_v9_layout || analysis_job.add_exchange_layout || analysis_job.update_theta_str.length() == 0 || analysis_job.update_scalers || analysis_job.export_int_fitted_to_csv;
     bool update_h5_fit = analysis_job.fitting_routines.size() > 0 || optimize_fit_override_params || analysis_job.stream_over_network || update_h5_without_fitting;
 
@@ -377,7 +416,7 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    if(false == analysis_job.is_network_source)
+    if(false == analysis_job.is_network_source && false == force_streaming)
     {
         //Get the dataset directory you want to process
         dataset_dir = clp.get_option("--dir");
@@ -500,7 +539,7 @@ int main(int argc, char *argv[])
             perform_quantification(&analysis_job);
         }
 
-        if( analysis_job.is_network_source ||  analysis_job.stream_over_network)
+        if( analysis_job.is_network_source ||  analysis_job.stream_over_network || force_streaming)
         {
 			// If we have fitting routines then stream the counts per sec
 			if (analysis_job.fitting_routines.size() > 0)

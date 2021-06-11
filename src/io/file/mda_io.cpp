@@ -819,7 +819,9 @@ bool MDA_IO::load_spectra_volume_with_callback(std::string path,
 
                 for(size_t detector_num : detector_num_arr)
                 {
-                    data_struct::Spectra* spectra = new data_struct::Spectra(samples);
+
+                    data_struct::Stream_Block* stream_block = data_struct::Stream_Block_Allocator::inst()->alloc_stream_block(detector_num, i, j, out_rows, out_cols, samples);
+                    data_struct::Spectra* spectra = stream_block->spectra();
 
                     if (is_single_row)
                     {
@@ -847,7 +849,7 @@ bool MDA_IO::load_spectra_volume_with_callback(std::string path,
 
                             (*spectra)[k] = (_mda_file->scan->sub_scans[j]->detectors_data[detector_num][k]);
                         }
-                        callback_func(i, j, out_rows, out_cols, detector_num, spectra, user_data);
+                        callback_func(stream_block, user_data);
                     }
                     else
                     {
@@ -874,7 +876,7 @@ bool MDA_IO::load_spectra_volume_with_callback(std::string path,
                         {
                             (*spectra)[k] = (_mda_file->scan->sub_scans[i]->sub_scans[j]->detectors_data[detector_num][k]);
                         }
-                        callback_func(i, j, out_rows, out_cols, detector_num, spectra, user_data);
+                        callback_func(stream_block, user_data);
                     }
                 }
             }

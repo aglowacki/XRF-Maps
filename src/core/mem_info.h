@@ -47,6 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #ifndef __MEM_HELPER__
 #define __MEM_HELPER__
 
+#include "core/defines.h"
 
 #if defined _WIN32 || defined __CYGWIN__
 #include "windows.h"
@@ -55,9 +56,9 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "sys/sysinfo.h"
 #endif
 
-long long get_available_mem();
+DLL_EXPORT long long get_available_mem();
 
-long long get_total_mem();
+DLL_EXPORT long long get_total_mem();
 
 #endif
 

@@ -80,7 +80,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "fitting/routines/param_optimized_fit_routine.h"
 #include "fitting/models/gaussian_model.h"
 
-DLL_EXPORT data_struct::Stream_Block* proc_spectra_block( data_struct::Stream_Block* stream_block );
+DLL_EXPORT data_struct::Stream_Block* proc_spectra_block(data_struct::Stream_Block* stream_block );
 
 DLL_EXPORT void run_stream_pipeline(data_struct::Analysis_Job* job);
 

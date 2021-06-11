@@ -78,14 +78,12 @@ class DLL_EXPORT Stream_Block
 
 public:
 
-	Stream_Block();
-
-    Stream_Block(int detector, size_t row, size_t col, size_t height, size_t width);
-
-	Stream_Block(const Stream_Block& stream_block);
-
-	Stream_Block& operator=(const Stream_Block&);
-
+	Stream_Block(int detector, size_t row, size_t col, size_t height, size_t width, size_t spectra_size);
+    
+    Stream_Block(const Stream_Block&);
+    /*
+    Stream_Block(Stream_Block&&) noexcept;
+    */
     ~Stream_Block();
 
     void init_fitting_blocks(std::unordered_map<Fitting_Routines, fitting::routines::Base_Fit_Routine *> *fit_routines, Fit_Element_Map_Dict * elements_to_fit_);
@@ -100,21 +98,30 @@ public:
 
     const int& detector_number() { return _detector; }
 
+    const size_t& samples() { return _spectra->size(); }
+
     inline bool is_end_of_row() { return (_col == _width-1); }
 
 	inline bool is_end_block() { return (_detector == -1 && _row == -1 && _height == -1 && _col == -1 && _width == -1); }
-
 
     //by Fitting_Routines
     std::unordered_map<Fitting_Routines, Stream_Fitting_Block> fitting_blocks;
 
     size_t dataset_hash();
 
-    std::string *dataset_directory;
+    const std::string& dataset_name() { return *_dataset_name; }
 
-    std::string *dataset_name;
+    const std::string& dataset_directory() { return *_dataset_directory; }
 
-    Spectra * spectra;
+    std::shared_ptr<std::string> dataset_name_ptr() { return _dataset_name; }
+
+    std::shared_ptr<std::string> dataset_directory_ptr() { return _dataset_directory; }
+
+    data_struct::Spectra* spectra() { return _spectra; }
+
+    void dataset_name(std::shared_ptr<std::string> ptr);
+
+    void dataset_directory(std::shared_ptr<std::string> ptr);
 
     Fit_Element_Map_Dict * elements_to_fit;
     //data_struct::Params_Override *fit_params_override_dict;
@@ -125,9 +132,13 @@ public:
 
     float theta;
 
-    bool del_str_ptr;
-
 protected:
+    std::shared_ptr<string> _dataset_directory;
+
+    std::shared_ptr<string> _dataset_name;
+
+    //std::unique_ptr<Spectra> _spectra;
+    Spectra* _spectra;
 
     size_t _row;
 
@@ -141,6 +152,11 @@ protected:
 
 };
 
+
+// Used for callback loading datasets
+typedef std::function<void(data_struct::Stream_Block*, void*)> IO_Callback_Func_Def;
+
 } //namespace data_struct
+
 
 #endif // Stream_Block_H

@@ -55,6 +55,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "data_struct/quantification_standard.h"
 #include "data_struct/scan_info.h"
 #include "data_struct/analysis_job.h"
+#include "data_struct/stream_block_allocator.h"
 
 namespace io
 {

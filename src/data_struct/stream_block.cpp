@@ -52,99 +52,64 @@ POSSIBILITY OF SUCH DAMAGE.
 namespace data_struct
 {
 
-Stream_Block::Stream_Block()
-{
-	_row = 0;
-	_col = 0;
-    _height = 0;
-    _width = 0;
-    theta = 0;
-	elements_to_fit = nullptr;
-    // by default we don't want to delete the string pointers becaues they are shared by stream blocks
-    del_str_ptr = false;
-	spectra = nullptr;
-    optimize_fit_params_preset = fitting::models::Fit_Params_Preset::BATCH_FIT_NO_TAILS;
-}
-
-//-----------------------------------------------------------------------------
-
 Stream_Block::Stream_Block(int detector,
                            size_t row,
                            size_t col,
                            size_t height,
-                           size_t width)
+                           size_t width,
+                           size_t spectra_size)
 {
+    //_spectra = std::make_unique<Spectra>(spectra_size);
+    _spectra = new Spectra(spectra_size);
     _row = row;
     _col = col;
     _height = height;
     _width = width;
     _detector = detector;
     theta = 0;
-	elements_to_fit = nullptr;
-    // by default we don't want to delete the string pointers becaues they are shared by stream blocks
-    del_str_ptr = false;
-    spectra = nullptr;
+    elements_to_fit = nullptr;
+    optimize_fit_params_preset = fitting::models::Fit_Params_Preset::BATCH_FIT_NO_TAILS;
 }
 
 //-----------------------------------------------------------------------------
 
+Stream_Block::Stream_Block(const Stream_Block& sb)
+{
+    _spectra = sb._spectra;
+    _row = sb._row;
+    _col = sb._col;
+    _height = sb._height;
+    _width = sb._width;
+    _detector = sb._detector;
+    theta = sb.theta;
+    elements_to_fit = sb.elements_to_fit;
+    optimize_fit_params_preset = sb.optimize_fit_params_preset;
+
+}
+
+//-----------------------------------------------------------------------------
+/*
+Stream_Block::Stream_Block(Stream_Block&& sb) noexcept :
+    _spectra(std::move(sb._spectra)),
+    _row(std::exchange(sb._row, 0)),
+    _col(std::exchange(sb._col, 0)),
+    _height(std::exchange(sb._height, 0)),
+    _width(std::exchange(sb._width, 0)),
+    _detector(std::exchange(sb._detector, 0)),
+    theta(std::exchange(sb.theta, 0.0)),
+    _marked_for_delete(std::exchange(sb._marked_for_delete, false))
+{
+    elements_to_fit = sb.elements_to_fit;
+    optimize_fit_params_preset = sb.optimize_fit_params_preset;
+
+}
+*/
+//-----------------------------------------------------------------------------
+
 Stream_Block::~Stream_Block()
 {
-    if(del_str_ptr)
-    {
-        if(dataset_name != nullptr)
-        {
-            delete dataset_name;
-            dataset_name = nullptr;
-        }
-        if(dataset_directory != nullptr)
-        {
-            delete dataset_directory;
-            dataset_directory = nullptr;
-        }
-    }
-
-    if(spectra != nullptr)
-    {
-        delete spectra;
-        spectra = nullptr;
-    }
-
     elements_to_fit = nullptr;
-
     model = nullptr;
-}
-
-Stream_Block::Stream_Block(const Stream_Block& stream_block)
-{
-	this->_col = stream_block._col;
-	this->_row = stream_block._row;
-	this->_height = stream_block._height;
-	this->_width = stream_block._width;
-	this->dataset_directory = stream_block.dataset_directory;
-	this->dataset_name = stream_block.dataset_name;
-	this->fitting_blocks = stream_block.fitting_blocks;
-	this->_detector = stream_block._detector;
-	this->spectra = stream_block.spectra;
-	this->elements_to_fit = stream_block.elements_to_fit;
-	this->model = stream_block.model;
-}
-
-
-Stream_Block& Stream_Block::operator=(const Stream_Block& stream_block)
-{
-	this->_col = stream_block._col;
-	this->_row = stream_block._row;
-	this->_height = stream_block._height;
-	this->_width = stream_block._width;
-	this->dataset_directory = stream_block.dataset_directory;
-	this->dataset_name = stream_block.dataset_name;
-	this->fitting_blocks = stream_block.fitting_blocks;
-	this->_detector = stream_block._detector;
-	this->spectra = stream_block.spectra;
-	this->elements_to_fit = stream_block.elements_to_fit;
-	this->model = stream_block.model;
-	return *this;
 }
 
 //-----------------------------------------------------------------------------
@@ -175,12 +140,35 @@ void Stream_Block::init_fitting_blocks(std::unordered_map<Fitting_Routines, fitt
 
 size_t Stream_Block::dataset_hash()
 {
-    if (dataset_directory != nullptr && dataset_name != nullptr)
+    if (_dataset_directory && _dataset_name)
     {
-        return std::hash<std::string> {} ((*dataset_directory) + (*dataset_name)) + _detector;
+        return std::hash<std::string> {} ((*_dataset_directory) + (*_dataset_name)) + _detector;
     }
     return -1;
 }
+
+//-----------------------------------------------------------------------------
+
+void Stream_Block::dataset_name(std::shared_ptr<std::string> ptr)
+{
+    if (_dataset_name)
+    {
+        _dataset_name.reset();
+    }
+    _dataset_name = ptr;
+}
+
+//-----------------------------------------------------------------------------
+
+void Stream_Block::dataset_directory(std::shared_ptr<std::string> ptr)
+{
+    if (_dataset_directory)
+    {
+        _dataset_directory.reset();
+    }
+    _dataset_directory = ptr;
+}
+
 
 //-----------------------------------------------------------------------------
 

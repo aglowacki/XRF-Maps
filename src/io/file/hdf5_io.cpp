@@ -2214,7 +2214,11 @@ bool HDF5_IO::load_spectra_volume_emd_with_callback(std::string path,
     real_t outcnt = 0.0;
     real_t elt = 1.0;
     offset[0] = start_offset; // start of frame offset
-	data_struct::Spectra *spectra = new data_struct::Spectra(samples);
+
+
+    data_struct::Stream_Block* stream_block = data_struct::Stream_Block_Allocator::inst()->alloc_stream_block(frame, row, col, height, width, samples);
+    data_struct::Spectra* spectra = stream_block->spectra();
+
 	for (size_t i = 0; i < read_amt; i++)
 	{
 		
@@ -2235,7 +2239,7 @@ bool HDF5_IO::load_spectra_volume_emd_with_callback(std::string path,
                     incnt = 0.0;
                     outcnt = 0.0;
 
-                    callback_func(row, col, height, width, frame, spectra, user_data);
+                    callback_func(stream_block, user_data);
                     col++;
                     if(col >= width)
                     {
@@ -2268,7 +2272,8 @@ bool HDF5_IO::load_spectra_volume_emd_with_callback(std::string path,
                             return true;
                         }
                     }
-                    spectra = new data_struct::Spectra(samples);
+                    data_struct::Stream_Block* stream_block = data_struct::Stream_Block_Allocator::inst()->alloc_stream_block(frame, row, col, height, width, samples);
+                    spectra = stream_block->spectra();
 				}
 				else
 				{
@@ -2297,7 +2302,7 @@ bool HDF5_IO::load_spectra_volume_emd_with_callback(std::string path,
             //check for delim to move to new spectra
             if (buffer[j] == 65535)
             {
-                callback_func(row, col, height, width, frame, spectra, user_data);
+                callback_func(stream_block, user_data);
                 col++;
                 if(col >= width)
                 {
@@ -2311,7 +2316,8 @@ bool HDF5_IO::load_spectra_volume_emd_with_callback(std::string path,
                     row = 0;
                     frame++;
                 }
-                spectra = new data_struct::Spectra(samples);
+                data_struct::Stream_Block* stream_block = data_struct::Stream_Block_Allocator::inst()->alloc_stream_block(frame, row, col, height, width, samples);
+                spectra = stream_block->spectra();
             }
             else
             {
@@ -2493,7 +2499,8 @@ bool HDF5_IO::load_spectra_volume_with_callback(std::string path,
                  for(size_t detector_num : detector_num_arr)
                  {
                      offset_meta[0] = detector_num;
-                     data_struct::Spectra * spectra = new data_struct::Spectra(dims_in[0]);
+                     data_struct::Stream_Block* stream_block = data_struct::Stream_Block_Allocator::inst()->alloc_stream_block(detector_num, row, col, dims_in[1], count_row[1], dims_in[0]);
+                     data_struct::Spectra* spectra = stream_block->spectra();
 
                      H5Sselect_hyperslab (dataspace_lt_id, H5S_SELECT_SET, offset_meta, nullptr, count_meta, nullptr);
                      error = H5Dread(dset_lt_id, H5T_NATIVE_REAL, memoryspace_meta_id, dataspace_lt_id, H5P_DEFAULT, &live_time);
@@ -2515,7 +2522,7 @@ bool HDF5_IO::load_spectra_volume_with_callback(std::string path,
                      {
                          (*spectra)[s] = detector_hid_map[detector_num].buffer[(count_row[1] * s) + col];
                      }
-                     callback_func(row, col, dims_in[1], count_row[1], detector_num, spectra, user_data);
+                     callback_func(stream_block, user_data);
                 }
              }
 

@@ -956,7 +956,7 @@ bool load_spectra_volume(std::string dataset_directory,
 
 // ----------------------------------------------------------------------------
 
-void cb_load_spectra_data_helper(size_t row, size_t col, size_t height, size_t width, size_t detector_num, data_struct::Spectra* spectra, void* user_data)
+void cb_load_spectra_data_helper(data_struct::Stream_Block* stream_block, void* user_data)
 {
     data_struct::Spectra* integrated_spectra = nullptr;
 
@@ -965,8 +965,9 @@ void cb_load_spectra_data_helper(size_t row, size_t col, size_t height, size_t w
         integrated_spectra = static_cast<data_struct::Spectra*>(user_data);
     }
 
-    if (integrated_spectra != nullptr && spectra != nullptr)
+    if (integrated_spectra != nullptr)
     {
+        data_struct::Spectra * spectra = stream_block->spectra();
         if (integrated_spectra->size() != spectra->size())
         {
             *integrated_spectra = *spectra;
@@ -977,10 +978,7 @@ void cb_load_spectra_data_helper(size_t row, size_t col, size_t height, size_t w
         }
     }
 
-    if (spectra != nullptr)
-    {
-        delete spectra;
-    }
+    data_struct::Stream_Block_Allocator::inst()->free_stream_blocks(stream_block);
 }
 
 // ----------------------------------------------------------------------------
@@ -999,7 +997,7 @@ bool load_and_integrate_spectra_volume(std::string dataset_directory,
     std::vector<size_t> detector_num_arr{ detector_num };
     size_t out_rows;
     size_t out_cols;
-    data_struct::IO_Callback_Func_Def  cb_function = std::bind(&cb_load_spectra_data_helper, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6, std::placeholders::_7);
+    data_struct::IO_Callback_Func_Def  cb_function = std::bind(&cb_load_spectra_data_helper, std::placeholders::_1, std::placeholders::_2);
 
 
     if (dataset_directory.back() != DIR_END_CHAR)

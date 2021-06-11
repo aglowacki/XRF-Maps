@@ -102,7 +102,7 @@ struct DLL_EXPORT file_name_size
 
 // ----------------------------------------------------------------------------
 
-void cb_load_spectra_data_helper(size_t row, size_t col, size_t height, size_t width, size_t detector_num, data_struct::Spectra* spectra, void* user_data);
+void cb_load_spectra_data_helper(data_struct::Stream_Block* stream_block, void* user_data);
 
 // ----------------------------------------------------------------------------
 

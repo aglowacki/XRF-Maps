@@ -126,14 +126,14 @@ void Spectra_Stream_Saver::save_stream(data_struct::Stream_Block* stream_block)
                 }
 
                 detector->last_row = stream_block->row();
-                detector->integrated_spectra.add(*stream_block->spectra);
+                detector->integrated_spectra.add(*stream_block->spectra());
                 //TODO: add limit checks to spectra_line
                 if (detector->spectra_line[stream_block->col()] != nullptr)
                 {
                     delete detector->spectra_line[stream_block->col()];
                 }
-                detector->spectra_line[stream_block->col()] = stream_block->spectra;
-                stream_block->spectra = nullptr;
+                detector->spectra_line[stream_block->col()] = stream_block->spectra();
+                ////stream_block->spectra = nullptr;
             }
         }
     }
@@ -144,8 +144,8 @@ void Spectra_Stream_Saver::save_stream(data_struct::Stream_Block* stream_block)
 void Spectra_Stream_Saver::_new_dataset(size_t d_hash, data_struct::Stream_Block* stream_block)
 {
     Dataset_Save *dataset = new Dataset_Save();
-    dataset->dataset_directory = stream_block->dataset_directory;
-    dataset->dataset_name = stream_block->dataset_name;
+    dataset->dataset_directory = stream_block->dataset_directory_ptr();
+    dataset->dataset_name = stream_block->dataset_name_ptr();
     _dataset_map.insert( {d_hash, dataset} );
     _new_detector(dataset, stream_block);
 }
@@ -157,11 +157,11 @@ void Spectra_Stream_Saver::_new_detector(Dataset_Save *dataset, data_struct::Str
     Detector_Save *detector = new Detector_Save(stream_block->width());
     dataset->detector_map.insert( { stream_block->detector_number(), detector } );
 
-    detector->integrated_spectra = *stream_block->spectra;
-    detector->spectra_line[stream_block->col()] = stream_block->spectra;
+    detector->integrated_spectra = *stream_block->spectra();
+    detector->spectra_line[stream_block->col()] = stream_block->spectra();
 
     //release ownership
-    stream_block->spectra = nullptr;
+    ////stream_block->spectra = nullptr;
 
     io::file::HDF5_IO::inst()->generate_stream_dataset(*dataset->dataset_directory, *dataset->dataset_name, stream_block->detector_number(), stream_block->height(), stream_block->width());
 }

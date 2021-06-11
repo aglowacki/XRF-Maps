@@ -437,7 +437,9 @@ bool NetCDF_IO::load_spectra_line_with_callback(std::string path,
             ii = i1 | i2<<16;
             output_counts[detector_num] = ((float)ii) / elapsed_realtime[detector_num];
 
-            data_struct::Spectra * spectra = new data_struct::Spectra(spectra_size);
+
+            data_struct::Stream_Block* stream_block = data_struct::Stream_Block_Allocator::inst()->alloc_stream_block(detector_num, row, j, max_rows, max_cols, spectra_size);
+            data_struct::Spectra* spectra = stream_block->spectra();
 
             spectra->elapsed_livetime(elapsed_livetime[detector_num]);
             spectra->elapsed_realtime(elapsed_realtime[detector_num]);
@@ -452,7 +454,7 @@ bool NetCDF_IO::load_spectra_line_with_callback(std::string path,
                 (*spectra)[k] = data_in[0][0][idx+k];
             }
 
-            callback_fun(row, j, max_rows, max_cols, detector_num, spectra, user_data);
+            callback_fun(stream_block, user_data);
 
         }
 

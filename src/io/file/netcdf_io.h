@@ -53,6 +53,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "data_struct/spectra_volume.h"
 #include <netcdf.h>
 #include <mutex>
+#include "data_struct/stream_block_allocator.h"
 
 namespace io
 {

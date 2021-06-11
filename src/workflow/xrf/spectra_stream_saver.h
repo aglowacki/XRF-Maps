@@ -108,14 +108,13 @@ protected:
         Dataset_Save(){}
         ~Dataset_Save()
         {
-            if (dataset_directory != nullptr)
+            if (dataset_directory)
             {
-                delete dataset_directory;
+                dataset_directory.reset();
             }
-            dataset_directory = nullptr;
-            if (dataset_name != nullptr)
+            if (dataset_name)
             {
-                delete dataset_name;
+                dataset_name.reset();
             }
             dataset_name = nullptr;
             for(auto& itr : detector_map)
@@ -128,8 +127,8 @@ protected:
             detector_map.clear();
         }
 
-        std::string *dataset_directory;
-        std::string *dataset_name;
+        std::shared_ptr<std::string> dataset_directory;
+        std::shared_ptr<std::string> dataset_name;
         //by detector_num
         std::map<int, Detector_Save*> detector_map;
     };

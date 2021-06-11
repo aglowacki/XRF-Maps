@@ -72,12 +72,12 @@ public:
 
     virtual ~Detector_Sum_Spectra_Source();
 
-    virtual void cb_load_spectra_data(size_t row, size_t col, size_t height, size_t width, size_t detector_num, data_struct::Spectra* spectra, void* user_data);
+    virtual void cb_load_spectra_data(data_struct::Stream_Block* stream_block, void* user_data);
 
 protected:
 
     std::vector<size_t> _detector_num_arr;
-    data_struct::Spectra* _spectra;
+    data_struct::Stream_Block* _stream_block;
 };
 
 } //namespace xrf

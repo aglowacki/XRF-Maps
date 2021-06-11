@@ -61,7 +61,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "data_struct/detector.h"
 #include "data_struct/params_override.h"
 #include "data_struct/scan_info.h"
-
+#include "data_struct/stream_block_allocator.h"
 #include "core/mem_info.h"
 
 namespace io

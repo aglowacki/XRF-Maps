@@ -49,7 +49,6 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "spectra_file_source.h"
 #include "io/file/hl_file_io.h"
-#include "core/mem_info.h"
 
 namespace workflow
 {
@@ -63,8 +62,7 @@ Spectra_File_Source::Spectra_File_Source() : Source<data_struct::Stream_Block*>(
     _analysis_job = nullptr;
     _current_dataset_directory = nullptr;
     _current_dataset_name = nullptr;
-	_max_num_stream_blocks = -1;
-    _cb_function = std::bind(&Spectra_File_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6, std::placeholders::_7);
+	_cb_function = std::bind(&Spectra_File_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2);
 }
 
 //-----------------------------------------------------------------------------
@@ -75,8 +73,7 @@ Spectra_File_Source::Spectra_File_Source(data_struct::Analysis_Job* analysis_job
     _current_dataset_directory = nullptr;
     _current_dataset_name = nullptr;
     _init_fitting_routines = true;
-	_max_num_stream_blocks = -1;
-    _cb_function = std::bind(&Spectra_File_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6, std::placeholders::_7);
+    _cb_function = std::bind(&Spectra_File_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2);
 }
 
 //-----------------------------------------------------------------------------
@@ -96,39 +93,27 @@ bool Spectra_File_Source::load_netcdf_line(std::string dirpath,
                                            size_t col_size)
 {
 	bool retVal;
-	_current_dataset_directory = new std::string(dirpath);
-	_current_dataset_name = new std::string(filename);
+	_current_dataset_directory = std::make_shared<string>(dirpath);
+	_current_dataset_name = std::make_shared<string>(filename);
 	retVal = io::file::NetCDF_IO::inst()->load_spectra_line_with_callback(dirpath+filename, detector_num_arr, row, row_size, col_size, _cb_function, nullptr);
-	delete _current_dataset_directory;
-	delete _current_dataset_name;
+	_current_dataset_directory.reset();
+	_current_dataset_name.reset();
 	return retVal;
 }
 
 // ----------------------------------------------------------------------------
 
-data_struct::Stream_Block* Spectra_File_Source::_alloc_stream_block(int detector, size_t row, size_t col, size_t height, size_t width, size_t spectra_size)
-{
-	if (_max_num_stream_blocks == -1)
-	{
-		_max_num_stream_blocks = _analysis_job->mem_limit / (spectra_size * sizeof(real_t));
-	}
-	return new data_struct::Stream_Block(detector, row, col, height, width);
-}
-
-// ----------------------------------------------------------------------------
-
-void Spectra_File_Source::cb_load_spectra_data(size_t row, size_t col, size_t height, size_t width, size_t detector_num, data_struct::Spectra* spectra, void* user_data)
+void Spectra_File_Source::cb_load_spectra_data(data_struct::Stream_Block* stream_block, void* user_data)
 {
 
     if(_output_callback_func != nullptr)
     {
-		data_struct::Stream_Block * stream_block = _alloc_stream_block(detector_num, row, col, height, width, spectra->size());
 
         if(_init_fitting_routines && _analysis_job != nullptr)
         {
-            _analysis_job->init_fit_routines(spectra->size());
+            _analysis_job->init_fit_routines(stream_block->spectra()->size());
 
-            struct data_struct::Detector* cp = _analysis_job->get_detector(detector_num);
+            struct data_struct::Detector* cp = _analysis_job->get_detector(stream_block->detector_number());
 
             if(cp == nullptr)
             {
@@ -146,15 +131,14 @@ void Spectra_File_Source::cb_load_spectra_data(size_t row, size_t col, size_t he
             stream_block->theta = _analysis_job->theta;
         }
 
-        stream_block->spectra = spectra;
-        stream_block->dataset_directory = _current_dataset_directory;
-        stream_block->dataset_name = _current_dataset_name;
+        stream_block->dataset_directory(_current_dataset_directory);
+        stream_block->dataset_name(_current_dataset_name);
 
         _output_callback_func(stream_block);
     }
     else
     {
-        delete spectra;
+        data_struct::Stream_Block_Allocator::inst()->free_stream_blocks(stream_block);
     }
 
 }
@@ -194,15 +178,15 @@ void Spectra_File_Source::run()
         }
 
 		//send end of file stream block
-		data_struct::Stream_Block* end_block = new data_struct::Stream_Block(-1, -1, -1, -1, -1);
-		end_block->dataset_directory = _current_dataset_directory;
-		end_block->dataset_name = _current_dataset_name;
-		end_block->del_str_ptr = true;
+        data_struct::Stream_Block* end_block = data_struct::Stream_Block_Allocator::inst()->alloc_stream_block(0, 0, 0, 0, 0, 0);
+		end_block->dataset_directory(_current_dataset_directory);
+		end_block->dataset_name(_current_dataset_name);
 		_output_callback_func(end_block);
 
-		_current_dataset_directory = nullptr;
-		_current_dataset_name = nullptr;
+        _current_dataset_directory.reset();
+        _current_dataset_name.reset();
     }
+
 }
 
 //-----------------------------------------------------------------------------
@@ -279,8 +263,8 @@ bool Spectra_File_Source::_load_spectra_volume_with_callback(std::string dataset
 
     size_t row_size = 0;
     size_t col_size = 0;
-    _current_dataset_directory = new std::string(dataset_directory);
-    _current_dataset_name = new std::string(dataset_file);
+    _current_dataset_directory = std::make_shared<string>(dataset_directory);
+    _current_dataset_name = std::make_shared<string>(dataset_file);
     //load spectra
     if (false == mda_io.load_spectra_volume_with_callback(dataset_directory+"mda"+ DIR_END_CHAR +dataset_file,
                                                         detector_num_arr,
@@ -292,8 +276,8 @@ bool Spectra_File_Source::_load_spectra_volume_with_callback(std::string dataset
                                                         nullptr) )
     {
         logE<<"load spectra "<<dataset_directory+"mda"+ DIR_END_CHAR +dataset_file<<"\n";
-        delete _current_dataset_directory;
-        delete _current_dataset_name;
+        _current_dataset_directory.reset();
+        _current_dataset_name.reset();
         return false;
     }
     else

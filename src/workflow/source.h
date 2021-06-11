@@ -54,6 +54,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <functional>
 #include "workflow/distributor.h"
 #include "workflow/sink.h"
+#include "data_struct/stream_block.h"
 
 namespace workflow
 {
@@ -64,8 +65,7 @@ class DLL_EXPORT Source
 {
 
    typedef std::function<void (T_OUT)> Callback_Func_Def;
- //  typedef std::function<void ( void*, Callback_Func_Def )> Source_Func_Def;
-
+ 
 public:
 
     Source()
@@ -100,31 +100,9 @@ public:
         connect(sink);
     }
 
-/*
-    void connect( Callback_Func_Def out_callback_func)
-    {
-        _output_callback_func = out_callback_func;
-    }
-
-    void set_function(Source_Func_Def func)
-    {
-        _prod_func = func;
-    }
-*/
     virtual void run() = 0;
 
-/*
-    template<class... Args>
-    virtual void run(Args&&... args)
-    {
 
-        auto task = std::make_shared< std::packaged_task<void> >(
-                std::bind(std::forward<Source_Func_Def>(_prod_func), std::forward<Args>(args)...)
-            );
-
-        task();
-    }
-*/
 protected:
 
     Callback_Func_Def _output_callback_func;

@@ -227,6 +227,7 @@ set(libxrf_fit_HEADERS
     src/data_struct/spectra_line.h
     src/data_struct/spectra_volume.h
     src/data_struct/stream_block.h
+    src/data_struct/stream_block_allocator.h
     src/quantification/models/quantification_model.h
     src/fitting/models/base_model.h
     src/fitting/models/gaussian_model.h
@@ -253,6 +254,7 @@ set(libxrf_fit_SOURCE
     src/data_struct/spectra_line.cpp
     src/data_struct/spectra_volume.cpp
     src/data_struct/stream_block.cpp
+    src/data_struct/stream_block_allocator.cpp
     src/quantification/models/quantification_model.cpp
     src/fitting/models/gaussian_model.cpp
     src/fitting/routines/param_optimized_fit_routine.cpp

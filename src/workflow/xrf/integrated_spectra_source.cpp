@@ -58,7 +58,7 @@ namespace xrf
 
 Integrated_Spectra_Source::Integrated_Spectra_Source(data_struct::Analysis_Job* analysis_job) : Spectra_File_Source(analysis_job)
 {
-    _cb_function = std::bind(&Integrated_Spectra_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6, std::placeholders::_7);
+    _cb_function = std::bind(&Integrated_Spectra_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2);
 }
 
 //-----------------------------------------------------------------------------
@@ -70,27 +70,25 @@ Integrated_Spectra_Source::~Integrated_Spectra_Source()
 
 // ----------------------------------------------------------------------------
 
-void Integrated_Spectra_Source::cb_load_spectra_data(size_t row, size_t col, size_t height, size_t width, size_t detector_num, data_struct::Spectra* spectra, void* user_data)
+void Integrated_Spectra_Source::cb_load_spectra_data(data_struct::Stream_Block* stream_block, void* user_data)
 {
 
     if(_output_callback_func == nullptr)
     {
-        delete spectra;
+        data_struct::Stream_Block_Allocator::inst()->free_stream_blocks(stream_block);
         return;
     }
     //init
-    if(_stream_block_list.count(detector_num) == 0)
+    if(_stream_block_list.count(stream_block->detector_number()) == 0)
     {
-        data_struct::Stream_Block * stream_block = new data_struct::Stream_Block(detector_num, row, col, height, width);
-
         if(_analysis_job != nullptr)
         {
             if(_init_fitting_routines)
             {
-                _analysis_job->init_fit_routines(spectra->size());
+                _analysis_job->init_fit_routines(stream_block->spectra()->size());
             }
 
-            struct data_struct::Detector* cp = _analysis_job->get_detector(detector_num);
+            struct data_struct::Detector* cp = _analysis_job->get_detector(stream_block->detector_number());
             if(_init_fitting_routines && cp == nullptr)
             {
                 cp = _analysis_job->get_first_detector();
@@ -105,23 +103,30 @@ void Integrated_Spectra_Source::cb_load_spectra_data(size_t row, size_t col, siz
             stream_block->optimize_fit_params_preset = _analysis_job->optimize_fit_params_preset;
         }
 
-        stream_block->spectra = new data_struct::Spectra(spectra->size());
-        stream_block->spectra->add(*spectra);
-        delete spectra;
-        stream_block->dataset_directory = _current_dataset_directory;
-        stream_block->dataset_name = _current_dataset_name;
+        ////stream_block->spectra = new data_struct::Spectra(spectra->size());
+        stream_block->spectra()->add(*(stream_block->spectra()));
+        int detector_num = stream_block->detector_number();
+        //call delete on stream_block
+        data_struct::Stream_Block_Allocator::inst()->free_stream_blocks(stream_block);
+
+        stream_block->dataset_directory(_current_dataset_directory);
+        stream_block->dataset_name(_current_dataset_name);
         _stream_block_list.insert({detector_num, stream_block});
     }
     else
     {
-        data_struct::Stream_Block * stream_block = _stream_block_list.at(detector_num);
+        data_struct::Stream_Block * out_stream_block = _stream_block_list.at(stream_block->detector_number());
 
-        stream_block->spectra->add(*spectra);
-        delete spectra;
+        out_stream_block->spectra()->add(*(stream_block->spectra()));
+        
+        bool is_last = (stream_block->col() == stream_block->width()) && (stream_block->row() == stream_block->height());
+        int detector_num = stream_block->detector_number();
 
-        if(col == width && row == height)
+        data_struct::Stream_Block_Allocator::inst()->free_stream_blocks(stream_block);
+
+        if(is_last)
         {
-            _output_callback_func(stream_block);
+            _output_callback_func(out_stream_block);
             _stream_block_list.erase(detector_num);
         }
     }

@@ -53,7 +53,6 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "core/defines.h"
 
 #include "workflow/source.h"
-#include "data_struct/stream_block.h"
 #include "data_struct/analysis_job.h"
 #include "io/file/netcdf_io.h"
 #include "io/file/mda_io.h"
@@ -81,7 +80,7 @@ public:
 
     virtual ~Spectra_File_Source();
 
-    virtual void cb_load_spectra_data(size_t row, size_t col, size_t height, size_t width, size_t detector_num, data_struct::Spectra* spectra, void* user_data);
+    virtual void cb_load_spectra_data(data_struct::Stream_Block* stream_block, void* user_data);
 
     virtual void run();
 
@@ -102,13 +101,9 @@ protected:
 													data_struct::IO_Callback_Func_Def callback_fun);
 
 
-	data_struct::Stream_Block* _alloc_stream_block(int detector, size_t row, size_t col, size_t height, size_t width, size_t spectra_size);
+    std::shared_ptr<string> _current_dataset_directory;
 
-	int _max_num_stream_blocks;
-	int _allocated_stream_blocks;
-
-    std::string *_current_dataset_directory;
-    std::string *_current_dataset_name;
+    std::shared_ptr<string> _current_dataset_name;
 
     data_struct::Analysis_Job* _analysis_job;
 
@@ -118,7 +113,7 @@ protected:
 
     std::vector<std::string> _hdf_files;
 
-    std::function <void (size_t, size_t, size_t, size_t, size_t, data_struct::Spectra*, void*)> _cb_function;
+    std::function <void (data_struct::Stream_Block*, void*)> _cb_function;
 
     bool _init_fitting_routines;
 

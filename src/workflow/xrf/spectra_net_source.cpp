@@ -100,7 +100,7 @@ void Spectra_Net_Source::run()
 #ifdef _BUILD_WITH_ZMQ
     _running = true;
     zmq::message_t token, message;
-    data_struct::Stream_Block *stream_block;
+    
     while (_running)
     {
         _zmq_socket->recv(&token);
@@ -111,8 +111,8 @@ void Spectra_Net_Source::run()
             {
                 if(_output_callback_func != nullptr && _analysis_job != nullptr)
                 {
-                    stream_block = _serializer.decode_spectra((char*)message.data(), message.size());
-                    _analysis_job->init_fit_routines(stream_block->spectra->size());
+                    data_struct::Stream_Block* stream_block = _serializer.decode_spectra((char*)message.data(), message.size());
+                    _analysis_job->init_fit_routines(stream_block->spectra()->size());
                     struct data_struct::Detector* cp = _analysis_job->get_detector(stream_block->detector_number());
 
                     if(cp == nullptr)

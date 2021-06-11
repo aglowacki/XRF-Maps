@@ -58,8 +58,9 @@ namespace xrf
 
 Detector_Sum_Spectra_Source::Detector_Sum_Spectra_Source() : Spectra_File_Source(nullptr)
 {
-    _cb_function = std::bind(&Detector_Sum_Spectra_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6, std::placeholders::_7);
-    _spectra = new data_struct::Spectra(2000, 0.0, 0.0, 0.0, 0.0);
+    _cb_function = std::bind(&Detector_Sum_Spectra_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2);
+    _stream_block = nullptr;
+    ////_spectra = new data_struct::Spectra(2000, 0.0, 0.0, 0.0, 0.0);
 	for (size_t det = 0; det < 4; det++)
 	{
 		_detector_num_arr.push_back(det);
@@ -71,8 +72,9 @@ Detector_Sum_Spectra_Source::Detector_Sum_Spectra_Source() : Spectra_File_Source
 
 Detector_Sum_Spectra_Source::Detector_Sum_Spectra_Source(data_struct::Analysis_Job* analysis_job) : Spectra_File_Source(analysis_job)
 {
-    _cb_function = std::bind(&Detector_Sum_Spectra_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6, std::placeholders::_7);
-    _spectra = new data_struct::Spectra(2000, 0.0, 0.0, 0.0, 0.0);
+    _cb_function = std::bind(&Detector_Sum_Spectra_Source::cb_load_spectra_data, this, std::placeholders::_1, std::placeholders::_2);
+    _stream_block = nullptr;
+    ////_spectra = new data_struct::Spectra(2000, 0.0, 0.0, 0.0, 0.0);
     if(analysis_job != nullptr)
     {
 		for (size_t det : analysis_job->detector_num_arr)
@@ -98,25 +100,24 @@ Detector_Sum_Spectra_Source::~Detector_Sum_Spectra_Source()
 
 // ----------------------------------------------------------------------------
 
-void Detector_Sum_Spectra_Source::cb_load_spectra_data(size_t row, size_t col, size_t height, size_t width, size_t detector_num, data_struct::Spectra* spectra, void* user_data)
+void Detector_Sum_Spectra_Source::cb_load_spectra_data(data_struct::Stream_Block* stream_block, void* user_data)
 {
 
-    if(_spectra->size() < spectra->size())
+    if(_stream_block == nullptr)
     {
-        _spectra->resize( spectra->size() );
+        _stream_block = data_struct::Stream_Block_Allocator::inst()->alloc_stream_block(-1, stream_block->row(), stream_block->col(), stream_block->width(), stream_block->height(), stream_block->samples());
     }
 
-    _spectra->add(*spectra);
+    _stream_block->spectra()->add(*(stream_block->spectra()));
+    int detector_num = stream_block->detector_number();
 
     if(detector_num == _detector_num_arr[_detector_num_arr.size()-1] && _output_callback_func != nullptr)
     {
-        data_struct::Stream_Block * stream_block = new data_struct::Stream_Block(-1, row, col, height, width);
-
         if(_analysis_job != nullptr)
         {
             if(_init_fitting_routines)
             {
-                _analysis_job->init_fit_routines(spectra->size());
+                _analysis_job->init_fit_routines(stream_block->samples());
             }
             struct data_struct::Detector* cp = _analysis_job->get_detector(detector_num);
 
@@ -134,16 +135,15 @@ void Detector_Sum_Spectra_Source::cb_load_spectra_data(size_t row, size_t col, s
             stream_block->optimize_fit_params_preset = _analysis_job->optimize_fit_params_preset;
         }
 
-        stream_block->spectra = _spectra;
-        stream_block->dataset_directory = _current_dataset_directory;
-        stream_block->dataset_name = _current_dataset_name;
+        stream_block->dataset_directory(_current_dataset_directory);
+        stream_block->dataset_name(_current_dataset_name);
         
-        _output_callback_func(stream_block);
+        _output_callback_func(_stream_block);
 
-        _spectra = new data_struct::Spectra(spectra->size(), 0.0, 0.0, 0.0, 0.0);
+        _stream_block = nullptr;
     }
 
-    delete spectra;
+    data_struct::Stream_Block_Allocator::inst()->free_stream_blocks(stream_block);
 
 }
 
