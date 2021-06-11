@@ -80,10 +80,8 @@ public:
 
 	Stream_Block(int detector, size_t row, size_t col, size_t height, size_t width, size_t spectra_size);
     
-    Stream_Block(const Stream_Block&);
-    /*
     Stream_Block(Stream_Block&&) noexcept;
-    */
+    
     ~Stream_Block();
 
     void init_fitting_blocks(std::unordered_map<Fitting_Routines, fitting::routines::Base_Fit_Routine *> *fit_routines, Fit_Element_Map_Dict * elements_to_fit_);
@@ -117,7 +115,7 @@ public:
 
     std::shared_ptr<std::string> dataset_directory_ptr() { return _dataset_directory; }
 
-    data_struct::Spectra* spectra() { return _spectra; }
+    data_struct::Spectra* spectra() { return _spectra.get(); }
 
     void dataset_name(std::shared_ptr<std::string> ptr);
 
@@ -137,8 +135,7 @@ protected:
 
     std::shared_ptr<string> _dataset_name;
 
-    //std::unique_ptr<Spectra> _spectra;
-    Spectra* _spectra;
+    std::unique_ptr<Spectra> _spectra;
 
     size_t _row;
 

@@ -1,5 +1,5 @@
 /***
-Copyright (c) 2016, UChicago Argonne, LLC. All rights reserved.
+Copyright (c) 2021, UChicago Argonne, LLC. All rights reserved.
 
 Copyright 2016. UChicago Argonne, LLC. This software was produced
 under U.S. Government contract DE-AC02-06CH11357 for Argonne National
@@ -43,117 +43,118 @@ ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 ***/
 
-/// Initial Author <2017>: Arthur Glowacki
 
 
 
-#include "stream_block.h"
+#include "stream_block_allocator.h"
 
 namespace data_struct
 {
 
+std::mutex Stream_Block_Allocator::_mutex;
+Stream_Block_Allocator* Stream_Block_Allocator::_this_inst(nullptr);
+
 //-----------------------------------------------------------------------------
 
-Stream_Block::Stream_Block(int detector,
-                           size_t row,
-                           size_t col,
-                           size_t height,
-                           size_t width,
-                           size_t spectra_size)
+Stream_Block_Allocator::Stream_Block_Allocator()
 {
-    _spectra = std::make_unique<Spectra>(spectra_size);
-    //_spectra = new Spectra(spectra_size);
-    _row = row;
-    _col = col;
-    _height = height;
-    _width = width;
-    _detector = detector;
-    theta = 0;
-    elements_to_fit = nullptr;
-    optimize_fit_params_preset = fitting::models::Fit_Params_Preset::BATCH_FIT_NO_TAILS;
+    _mem_limit = -1;
+    _cur_mem_usage = 0;
 }
 
 //-----------------------------------------------------------------------------
 
-Stream_Block::Stream_Block(Stream_Block&& sb) noexcept :
-    _spectra(std::move(sb._spectra)),
-    _row(std::exchange(sb._row, 0)),
-    _col(std::exchange(sb._col, 0)),
-    _height(std::exchange(sb._height, 0)),
-    _width(std::exchange(sb._width, 0)),
-    _detector(std::exchange(sb._detector, 0)),
-    theta(std::exchange(sb.theta, 0.0))
+Stream_Block_Allocator::~Stream_Block_Allocator()
 {
-    elements_to_fit = sb.elements_to_fit;
-    optimize_fit_params_preset = sb.optimize_fit_params_preset;
-
+    clean_up_all_stream_blocks();
 }
 
 //-----------------------------------------------------------------------------
 
-Stream_Block::~Stream_Block()
+Stream_Block_Allocator* Stream_Block_Allocator::inst()
 {
-    elements_to_fit = nullptr;
-    model = nullptr;
-}
+    std::lock_guard<std::mutex> lock(_mutex);
 
-//-----------------------------------------------------------------------------
-
-void Stream_Block::init_fitting_blocks(std::unordered_map<Fitting_Routines, fitting::routines::Base_Fit_Routine *> *fit_routines,
-                                       Fit_Element_Map_Dict * elements_to_fit_)
-{
-    elements_to_fit = elements_to_fit_;
-
-    if(elements_to_fit == nullptr)
+    if (_this_inst == nullptr)
     {
-        //throw Exception;
+        _this_inst = new Stream_Block_Allocator();
+    }
+    return _this_inst;
+}
+
+//-----------------------------------------------------------------------------s
+
+void Stream_Block_Allocator::set_mem_limit(long long limit)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    _mem_limit = limit;
+}
+
+//-----------------------------------------------------------------------------
+
+data_struct::Stream_Block* Stream_Block_Allocator::alloc_stream_block(int detector, size_t row, size_t col, size_t height, size_t width, size_t spectra_size)
+{
+    long long extra = spectra_size + (5 * sizeof(size_t));
+    while (_cur_mem_usage.load(std::memory_order_acquire) >= (_mem_limit + extra))
+    {
+        std::this_thread::yield();
     }
 
-    for(const auto &itr : *fit_routines)
+    std::lock_guard<std::mutex> lock(_mutex);
+
+    _stream_blocks.push_back(new Stream_Block(detector, row, col, height, width, spectra_size));
+    _cur_mem_usage += extra;
+    return _stream_blocks.back();
+    
+}
+
+//-----------------------------------------------------------------------------
+
+void Stream_Block_Allocator::free_stream_blocks(data_struct::Stream_Block* sb)
+{
+    std::lock_guard<std::mutex> lock(_mutex);
+    
+    std::vector<Stream_Block*>::iterator itr = _stream_blocks.begin();
+
+    while (itr != _stream_blocks.end())
     {
-        fitting_blocks[itr.first] = Stream_Fitting_Block();
-        fitting_blocks[itr.first].fit_routine = itr.second;
-        for(auto& e_itr : *elements_to_fit)
+        if ((*itr) == sb)
         {
-            fitting_blocks[itr.first].fit_counts.emplace(std::pair<std::string, real_t> (e_itr.first, (real_t)0.0));
+            long long cur = _cur_mem_usage.load(std::memory_order_acquire);
+            long long sub = cur - ( (*itr)->samples() + (5 * sizeof(size_t)));
+            delete (*itr);
+            _cur_mem_usage.store(sub, std::memory_order_release);
+            itr = _stream_blocks.erase(itr);
         }
-        fitting_blocks[itr.first].fit_counts.emplace(std::pair<std::string, real_t> (STR_NUM_ITR, (real_t)0.0));
+        else
+        {
+            ++itr;
+        }
     }
+    
 }
 
 //-----------------------------------------------------------------------------
 
-size_t Stream_Block::dataset_hash()
+void Stream_Block_Allocator::clean_up_all_stream_blocks()
 {
-    if (_dataset_directory && _dataset_name)
+    std::lock_guard<std::mutex> lock(_mutex);
+
+    while (_stream_blocks.size() > 0)
     {
-        return std::hash<std::string> {} ((*_dataset_directory) + (*_dataset_name)) + _detector;
+        std::vector<Stream_Block*>::iterator itr = _stream_blocks.begin();
+
+        while (itr != _stream_blocks.end())
+        {
+            long long cur = _cur_mem_usage.load(std::memory_order_acquire);
+            long long sub = cur - ((*itr)->samples() + (5 * sizeof(size_t)));
+            delete (*itr);
+            _cur_mem_usage.store(sub, std::memory_order_release);
+            itr = _stream_blocks.erase(itr);
+        }
     }
-    return -1;
+    
 }
-
-//-----------------------------------------------------------------------------
-
-void Stream_Block::dataset_name(std::shared_ptr<std::string> ptr)
-{
-    if (_dataset_name)
-    {
-        _dataset_name.reset();
-    }
-    _dataset_name = ptr;
-}
-
-//-----------------------------------------------------------------------------
-
-void Stream_Block::dataset_directory(std::shared_ptr<std::string> ptr)
-{
-    if (_dataset_directory)
-    {
-        _dataset_directory.reset();
-    }
-    _dataset_directory = ptr;
-}
-
 
 //-----------------------------------------------------------------------------
 
