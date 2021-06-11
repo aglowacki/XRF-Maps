@@ -51,6 +51,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define Stream_Block_H
 
 #include "core/defines.h"
+#include <memory>
 #include "data_struct/element_info.h"
 #include "fitting/routines/base_fit_routine.h"
 
