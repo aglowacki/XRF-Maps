@@ -47,6 +47,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 
 #include "stream_block_allocator.h"
+#include <thread>
 
 namespace data_struct
 {
