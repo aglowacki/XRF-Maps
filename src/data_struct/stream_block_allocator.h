@@ -51,6 +51,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "core/defines.h"
 #include <memory>
 #include <mutex>
+#include <atomic>
 #include "data_struct/stream_block.h"
 
 namespace data_struct
