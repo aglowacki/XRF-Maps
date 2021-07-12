@@ -458,7 +458,7 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    if(false == analysis_job.is_network_source && false == force_streaming)
+    if(false == analysis_job.is_network_source)
     {
         //Get the dataset directory you want to process
         dataset_dir = clp.get_option("--dir");

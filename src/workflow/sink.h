@@ -166,8 +166,7 @@ protected:
 
                     if(_delete_block && input_block != nullptr)
                     {
-                        delete input_block;
-						input_block = nullptr;
+                        data_struct::Stream_Block_Allocator::inst()->free_stream_blocks(input_block);
                     }
                 }
             }
