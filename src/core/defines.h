@@ -188,7 +188,6 @@ const string STR_SR_CURRENT = "SR_Current";
 const string STR_US_IC = "US_IC";
 const string STR_DS_IC = "DS_IC";
 
-
 const string STR_K_A_LINES = "K Alpha";
 const string STR_K_B_LINES = "K Beta";
 const string STR_L_LINES = "L Lines";
