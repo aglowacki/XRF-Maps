@@ -86,7 +86,11 @@ private:
 
     std::atomic<long long> _cur_mem_usage;
 
-    std::vector<data_struct::Stream_Block* > _stream_blocks;
+    std::list<data_struct::Stream_Block* > _stream_blocks;
+
+    std::list<data_struct::Stream_Block* > _free_stream_blocks;
+
+    bool _clean_up;
 
 };
 

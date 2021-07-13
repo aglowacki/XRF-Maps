@@ -55,6 +55,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <future>
 #include <thread>
 #include "workflow/distributor.h"
+#include "data_struct/stream_block.h"
 
 namespace workflow
 {

@@ -198,25 +198,6 @@ int main(int argc, char *argv[])
         analysis_job.quantification_standard_filename = clp.get_option("--quantify-with");
     }
 
-	//check if we should set a ram memory limit
-	if (clp.option_exists("--mem-limit"))
-	{
-		 std::string memlimit = clp.get_option("--mem-limit");
-		 if (memlimit.rfind('M'))
-		 {
-
-		 }
-		 else if (memlimit.rfind('G'))
-		 {
-
-		 }
-		 else
-		 {
-			 logW << "Could not parse --mem-limit parameter. Make sure to use M for megabytes or G for gigabytes. ex 200M\n";
-		 }
-		 //analysis_job.mem_limit = ;
-	}
-
     //Do we want to optimize our fitting parameters
     if( clp.option_exists("--optimize-fit-override-params") )
     {
@@ -416,7 +397,7 @@ int main(int argc, char *argv[])
         {
             string numeral = str_mem_limit.substr(0, g_mem_idx);
             long long g_limit = stoll(numeral);
-            g_limit = g_limit * (1024 * 1024 * 1034);
+            g_limit = g_limit * (1024 * 1024 * 1024);
             if (g_limit < total_mem)
             {
                 analysis_job.mem_limit = g_limit;
@@ -424,9 +405,9 @@ int main(int argc, char *argv[])
         }
         else if(m_mem_idx != std::string::npos)
         {
-            string numeral = str_mem_limit.substr(0, g_mem_idx);
+            string numeral = str_mem_limit.substr(0, m_mem_idx);
             long long g_limit = stoll(numeral);
-            g_limit = g_limit * (1024 * 1034);
+            g_limit = g_limit * (1024 * 1024);
             if (g_limit < total_mem)
             {
                 analysis_job.mem_limit = g_limit;
@@ -601,6 +582,7 @@ int main(int argc, char *argv[])
 			{
 				stream_spectra(&analysis_job);
 			}
+            data_struct::Stream_Block_Allocator::inst()->clean_up_all_stream_blocks();
         }
         else
         {

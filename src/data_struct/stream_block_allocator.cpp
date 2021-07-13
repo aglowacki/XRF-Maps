@@ -61,6 +61,7 @@ Stream_Block_Allocator::Stream_Block_Allocator()
 {
     _mem_limit = -1;
     _cur_mem_usage = 0;
+    _clean_up = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -95,18 +96,45 @@ void Stream_Block_Allocator::set_mem_limit(long long limit)
 
 data_struct::Stream_Block* Stream_Block_Allocator::alloc_stream_block(int detector, size_t row, size_t col, size_t height, size_t width, size_t spectra_size)
 {
-    long long extra = spectra_size + (5 * sizeof(size_t));
+    long long extra = ( ((spectra_size + 4) * sizeof(real_t)) + ((11 * sizeof(size_t)) + 4) ); // size of stream_block
+
+    long long cur = _cur_mem_usage.load(std::memory_order_acquire);
+
+    if (cur >= _mem_limit)
+    {
+        while (_clean_up == false)
+        {
+            {
+                std::lock_guard<std::mutex> lock(_mutex);
+                if (_free_stream_blocks.size() > 0)
+                {
+                    Stream_Block* sb = _free_stream_blocks.back();
+                    _free_stream_blocks.pop_back();
+                    _stream_blocks.push_back(sb);
+                    return sb;
+                }
+            }
+
+            std::this_thread::yield();
+        }
+    }
+
+    /*
     while (_cur_mem_usage.load(std::memory_order_acquire) >= (_mem_limit + extra))
     {
         std::this_thread::yield();
     }
+    */
+    if (_clean_up == false)
+    {
 
-    std::lock_guard<std::mutex> lock(_mutex);
+        std::lock_guard<std::mutex> lock(_mutex);
 
-    _stream_blocks.push_back(new Stream_Block(detector, row, col, height, width, spectra_size));
-    _cur_mem_usage += extra;
-    return _stream_blocks.back();
-    
+        _stream_blocks.push_back(new Stream_Block(detector, row, col, height, width, spectra_size));
+        _cur_mem_usage.store(cur+extra, std::memory_order_release);
+        return _stream_blocks.back();
+    }
+    return nullptr;
 }
 
 //-----------------------------------------------------------------------------
@@ -115,24 +143,38 @@ void Stream_Block_Allocator::free_stream_blocks(data_struct::Stream_Block* sb)
 {
     std::lock_guard<std::mutex> lock(_mutex);
     
+    for (std::list<Stream_Block*>::iterator itr = _stream_blocks.begin(); itr != _stream_blocks.end(); ++itr)
+    {
+        if (sb == *itr)
+        {
+            _stream_blocks.erase(itr);
+            break;
+        }
+    }
+    
+    _free_stream_blocks.push_back(sb);
+    
+    /*
     std::vector<Stream_Block*>::iterator itr = _stream_blocks.begin();
 
     while (itr != _stream_blocks.end())
     {
         if ((*itr) == sb)
         {
-            long long cur = _cur_mem_usage.load(std::memory_order_acquire);
-            long long sub = cur - ( (*itr)->samples() + (5 * sizeof(size_t)));
-            delete (*itr);
-            _cur_mem_usage.store(sub, std::memory_order_release);
+            //long long cur = _cur_mem_usage.load(std::memory_order_acquire);
+            //long long sub = cur - ( ((*itr)->samples() * sizeof(real_t)) + (5 * sizeof(size_t)));
+            //delete (*itr);
+            //_cur_mem_usage.store(sub, std::memory_order_release);
             itr = _stream_blocks.erase(itr);
+            _free_stream_blocks.push_back(*itr);
+            break;
         }
         else
         {
             ++itr;
         }
     }
-    
+    */
 }
 
 //-----------------------------------------------------------------------------
@@ -141,20 +183,19 @@ void Stream_Block_Allocator::clean_up_all_stream_blocks()
 {
     std::lock_guard<std::mutex> lock(_mutex);
 
-    while (_stream_blocks.size() > 0)
-    {
-        std::vector<Stream_Block*>::iterator itr = _stream_blocks.begin();
+    _clean_up = true;
 
-        while (itr != _stream_blocks.end())
-        {
-            long long cur = _cur_mem_usage.load(std::memory_order_acquire);
-            long long sub = cur - ((*itr)->samples() + (5 * sizeof(size_t)));
-            delete (*itr);
-            _cur_mem_usage.store(sub, std::memory_order_release);
-            itr = _stream_blocks.erase(itr);
-        }
+    for (auto& itr : _free_stream_blocks)
+    {
+        delete itr;
     }
-    
+
+    for(auto &itr: _stream_blocks)
+    {
+        delete itr;
+    }
+
+    _cur_mem_usage.store(0, std::memory_order_release);
 }
 
 //-----------------------------------------------------------------------------
