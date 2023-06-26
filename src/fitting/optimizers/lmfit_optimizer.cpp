@@ -150,11 +150,11 @@ void quantification_residuals_lmfit( const T_real *par, int m_dat, const void *d
     {
 		if (std::isfinite(result_map[itr.first]) == false)
 		{
-			fvec[idx] = itr.second.e_cal_ratio;
+            fvec[idx] = std::numeric_limits<T_real>::max();
 		}
 		else
 		{
-			fvec[idx] = itr.second.e_cal_ratio - result_map[itr.first];
+            fvec[idx] = (itr.second.e_cal_ratio - result_map[itr.first]) * itr.second.fitting_weights;
 		}
         idx++;
     }

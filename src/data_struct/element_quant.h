@@ -83,7 +83,8 @@ struct DLL_EXPORT Element_Quant
         transmission_through_air(e.transmission_through_air),
         e_cal_ratio(e.e_cal_ratio),
         Z(e.Z),
-        calib_curve_val(e.calib_curve_val)
+        calib_curve_val(e.calib_curve_val),
+        fitting_weights(e.fitting_weights)
     {
         
     }
@@ -99,7 +100,8 @@ struct DLL_EXPORT Element_Quant
         transmission_through_air(std::exchange(e.transmission_through_air, 0.0)),
         e_cal_ratio(std::exchange(e.e_cal_ratio, 0.0)),
         Z(std::exchange(e.Z, 0)),
-        calib_curve_val(std::exchange(e.calib_curve_val, 0.0))
+        calib_curve_val(std::exchange(e.calib_curve_val, 0.0)),
+        fitting_weights(std::move(e.fitting_weights))
     {
     }
 
@@ -115,6 +117,7 @@ struct DLL_EXPORT Element_Quant
         transmission_through_Si_detector = 0.0;
         transmission_through_air = 0.0;// (N2)
         e_cal_ratio = 0.0;
+        fitting_weights = 1.0; 
         Z = 0;
         name = "";
         calib_curve_val = 0;
@@ -127,6 +130,7 @@ struct DLL_EXPORT Element_Quant
     T_real yield;
     T_real transmission_through_Si_detector;
     T_real transmission_through_air;// (N2)
+    T_real fitting_weights; // weight used for residual calc
     int Z;
     T_real e_cal_ratio;
     T_real calib_curve_val;

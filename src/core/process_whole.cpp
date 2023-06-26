@@ -425,6 +425,8 @@ void load_and_fit_quatification_datasets(data_struct::Analysis_Job<double>* anal
         for (auto& fit_itr : detector->fit_routines)
         {
             detector->avg_element_quants(fit_itr.first, STR_SR_CURRENT, element_amt_in_all_standards);
+            detector->avg_element_quants(fit_itr.first, STR_US_IC, element_amt_in_all_standards);
+            detector->avg_element_quants(fit_itr.first, STR_DS_IC, element_amt_in_all_standards);
         }
     }
 }

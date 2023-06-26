@@ -170,7 +170,7 @@ void fill_user_data(User_Data<T_real> &ud,
         weights = weights.unaryExpr([](T_real v) { return std::isfinite(v) ? v : (T_real)0.0; });
         weights = convolve1d(weights, 5);
         weights = Eigen::abs(weights);
-        weights /= weights.maxCoeff();
+        weights = 1 / (weights / weights.maxCoeff());
         ud.weights = weights.segment(energy_range.min, energy_range.count());
     }
     else

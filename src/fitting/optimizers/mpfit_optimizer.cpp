@@ -160,11 +160,11 @@ int quantification_residuals_mpfit(int m, int params_size, T_real *params, T_rea
     {
 		if (std::isfinite(result_map[itr.first]) == false)
 		{
-			dy[idx] = itr.second.e_cal_ratio;
+			dy[idx] = std::numeric_limits<T_real>::max();
 		}
 		else
 		{
-			dy[idx] = itr.second.e_cal_ratio - result_map[itr.first];
+			dy[idx] = (itr.second.e_cal_ratio - result_map[itr.first]) * itr.second.fitting_weights;
 		}
         idx++;
     }
