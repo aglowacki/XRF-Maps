@@ -134,12 +134,13 @@ void Detector<T_real>::update_element_quants(Fitting_Routines routine,
                                     Quantification_Model<T_real>* quantification_model,
                                     T_real ic_quantifier)
 {
+    
     T_real max_counts = std::numeric_limits<T_real>::min();
     for (auto& w_itr : standard->element_counts.at(routine))
     {
         max_counts = std::max(w_itr.second, max_counts);
     }
-
+    
     if (fitting_quant_map.count(routine) > 0)
     {
         if (fitting_quant_map.at(routine).quant_scaler_map.count(quantifier_scaler) > 0)
@@ -192,7 +193,7 @@ void Detector<T_real>::update_element_quants(Fitting_Routines routine,
                                 // e_cal_ratio defined as 0 , add this value. If we have multiple standards
                                 // then we will normalize this later .
                                 eq_itr.e_cal_ratio += (T_real)1.0 / e_cal;
-                                eq_itr.fitting_weights = 1. / (counts / max_counts); //higher counts = more important
+                                //eq_itr.fitting_weights =  (counts / max_counts); //higher counts = more important
                             }
                             else
                             {
