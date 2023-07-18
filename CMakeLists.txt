@@ -69,6 +69,8 @@ find_package(hdf5 CONFIG REQUIRED)
 find_package(netCDF CONFIG REQUIRED)
 find_package(yaml-cpp CONFIG REQUIRED)
 find_package(jsoncpp CONFIG REQUIRED)
+find_package(CLBlast CONFIG REQUIRED)
+
 
 set(EIGEN3_INCLUDES "${PROJECT_SOURCE_DIR}/src/support/eigen-git-mirror" CACHE PATH "Eigen include folder")
 # todo 
@@ -475,6 +477,7 @@ ELSEIF (UNIX)
   ENDIF()
 ENDIF()
 
+target_link_libraries(main PRIVATE clblast)
 
 # Building on theta doesn't need hdf5 and it is empty os need a check 
 IF(${HDF5_LIB_LEN} LESS 1)
