@@ -214,6 +214,10 @@ public:
 
     std::vector<T_real> to_array();
 
+    std::vector<T_real> lower_to_array();
+
+    std::vector<T_real> upper_to_array();
+
     std::vector<std::string> names_to_array();
 
     void from_array(std::vector<T_real> &arr);

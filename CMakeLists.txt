@@ -205,6 +205,8 @@ IF (UNIX)
   # Include vcpkg installed dir (doesn't auto include it)
   find_path(H5_INCLUDE_DIR hdf5.h)
   include_directories(${H5_INCLUDE_DIR})
+  include_directories(/opt/homebrew/include/)
+  link_directories(AFTER "/lib64" "/opt/homebrew/lib")
 ENDIF()
 
 # Visual Studio specific include and source
@@ -250,6 +252,7 @@ set(libxrf_fit_HEADERS
     src/fitting/optimizers/optimizer.h
     src/fitting/optimizers/mpfit_optimizer.h
     src/fitting/optimizers/lmfit_optimizer.h
+    src/fitting/optimizers/tao_brgn_optimizer.h
     src/data_struct/detector.h
     src/stats/correlation_coefficient.h
     src/data_struct/analysis_job.h
@@ -276,6 +279,7 @@ set(libxrf_fit_SOURCE
     src/fitting/optimizers/optimizer.cpp
     src/fitting/optimizers/mpfit_optimizer.cpp
     src/fitting/optimizers/lmfit_optimizer.cpp
+    src/fitting/optimizers/tao_brgn_optimizer.cpp
     src/data_struct/detector.cpp
     src/data_struct/analysis_job.cpp
 )
@@ -483,6 +487,7 @@ ELSEIF (UNIX)
   ENDIF()
 ENDIF()
 
+set_target_properties(libxrf_fit libxrf_io PROPERTIES LINK_FLAGS "-lpetsc -lmpi")
 
 # Building on theta doesn't need hdf5 and it is empty os need a check 
 IF(${HDF5_LIB_LEN} LESS 1)

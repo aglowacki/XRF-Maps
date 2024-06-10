@@ -135,6 +135,41 @@ std::vector<T_real> Fit_Parameters<T_real>::to_array()
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
+std::vector<T_real> Fit_Parameters<T_real>::lower_to_array()
+{
+    std::vector<T_real> arr;
+    for(const auto& itr : _params)
+    {
+        if (itr.second.bound_type != E_Bound_Type::FIXED)
+        {
+            //_params[itr.first].opt_array_index = arr.size();
+            arr.push_back(itr.second.min_val);
+        }
+    }
+    return arr;
+}
+
+//-----------------------------------------------------------------------------
+
+template<typename T_real>
+std::vector<T_real> Fit_Parameters<T_real>::upper_to_array()
+{
+    std::vector<T_real> arr;
+    for(const auto& itr : _params)
+    {
+        if (itr.second.bound_type != E_Bound_Type::FIXED)
+        {
+            //_params[itr.first].opt_array_index = arr.size();
+            arr.push_back(itr.second.max_val);
+        }
+    }
+    return arr;
+}
+
+
+//-----------------------------------------------------------------------------
+
+template<typename T_real>
 std::vector<std::string> Fit_Parameters<T_real>::names_to_array()
 {
     std::vector<std::string> arr;
