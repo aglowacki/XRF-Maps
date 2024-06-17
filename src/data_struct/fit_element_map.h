@@ -167,6 +167,8 @@ public:
 	const std::string& shell_type_as_string() const { return _shell_type; }
 
 	bool check_binding_energy(T_real incident_energy, int energy_ratio_idx) const;
+
+    Fit_Element_Map<double>* to_double() const;
 protected:
 
     void generate_energy_ratio(T_real energy, T_real ratio, Element_Param_Type et, const Element_Info<T_real> * const detector_element);

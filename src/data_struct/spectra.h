@@ -237,6 +237,27 @@ public:
 
     const _T output_counts() const { return _output_counts; }
 
+    Spectra<double> to_double() const 
+    {
+        Spectra<double> spec;
+        spec.resize(this->size());
+        if (std::is_same<_T, float>::value)
+        {
+            for(int i = 0; i < this->size(); i++)
+            {
+                spec[i] = static_cast<double>((*this)[i]);
+            }
+        }
+        else if (std::is_same<_T, double>::value)
+        {
+            for(int i = 0; i < this->size(); i++)
+            {
+                spec[i] = (*this)[i];
+            }
+        }
+        return spec;
+    }
+
     Spectra sub_spectra(size_t start, size_t count) const
 	{
         return Spectra(this->segment(start, count), _elapsed_livetime, _elapsed_realtime, _input_counts, _output_counts);

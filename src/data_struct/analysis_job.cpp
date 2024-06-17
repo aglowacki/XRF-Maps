@@ -57,7 +57,7 @@ namespace data_struct
 template<typename T_real>
 Analysis_Job<T_real>::Analysis_Job()
 {
-    _optimizer = &_lmfit_optimizer;
+    _optimizer = &_brgn_optimizer;
     optimize_fit_routine = OPTIMIZE_FIT_ROUTINE::ALL_PARAMS;
     _last_init_sample_size = 0;
 	_first_init = true;
@@ -168,10 +168,15 @@ void Analysis_Job<T_real>::set_optimizer(std::string optimizer)
         logI << "Setting optimizer to MPFIT\n";
         _optimizer = &_mpfit_optimizer;
     }
-    else
+    else if(optimizer == "lmfit")
     {
         logI << "Setting optimizer to LMFIT\n";
         _optimizer = &_lmfit_optimizer;
+    }
+    else
+    {
+        logI << "Setting optimizer to BGRN\n";
+        _optimizer = &_brgn_optimizer;
     }
 }
 

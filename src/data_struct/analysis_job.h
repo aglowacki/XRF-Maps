@@ -61,6 +61,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "data_struct/params_override.h"
 #include "fitting/optimizers/lmfit_optimizer.h"
 #include "fitting/optimizers/mpfit_optimizer.h"
+#include "fitting/optimizers/tao_brgn_optimizer.h"
 
 namespace data_struct
 {
@@ -163,7 +164,8 @@ protected:
     //Optimizers for fitting models
     fitting::optimizers::LMFit_Optimizer<T_real> _lmfit_optimizer;
     fitting::optimizers::MPFit_Optimizer<T_real> _mpfit_optimizer;
-    fitting::optimizers::Optimizer<T_real>*_optimizer;
+    fitting::optimizers::TAO_BRGN_Optimizer<T_real> _brgn_optimizer;
+    fitting::optimizers::Optimizer<T_real> *_optimizer;
 
     size_t _last_init_sample_size;
 

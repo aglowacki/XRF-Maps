@@ -411,6 +411,26 @@ bool Fit_Element_Map<T_real>::check_binding_energy(T_real incident_energy, int e
 }
 
 //-----------------------------------------------------------------------------
+template<typename T_real>
+Fit_Element_Map<double>* Fit_Element_Map<T_real>::to_double() const
+{
+    Fit_Element_Map<double> *fm = new Fit_Element_Map<double>(this->full_name(), Element_Info_Map<double>::inst()->get_element(this->Z()));
+    fm->init_energy_ratio_for_detector_element(data_struct::Element_Info_Map<double>::inst()->get_element("Si"));
+
+    std::vector<T_real> er = energy_ratio_multipliers();
+    for(int i=0; i< er.size(); i++)
+    {
+        fm->set_custom_multiply_ratio(i, static_cast<double>(er[i]));
+    }
+
+    const Element_Info<T_real>* pile =  pileup_element();
+    if(pile != nullptr)
+    {
+        fm->set_as_pileup(pile->name, Element_Info_Map<double>::inst()->get_element(pile->number));
+    }
+    return fm;
+}
+
 //-----------------------------------------------------------------------------
 
 TEMPLATE_CLASS_DLL_EXPORT Fit_Element_Map<float>;
