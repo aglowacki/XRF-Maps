@@ -110,14 +110,64 @@ PetscErrorCode EvaluateResidual(Tao tao, Vec X, Vec res, void *ptr)
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
-// ------------------------------------------------------------ 
+PetscErrorCode EvaluateResidual2(Tao tao, Vec X, PetscReal *f, void *ptr)
+{
+    PetscFunctionBegin;
+    bool first = true;
+    User_Data<double>* ud = (User_Data<double>*)(ptr);
+    // Debug to find which param changed last
+    Fit_Parameters<double> prev_fit_p;
+    prev_fit_p.update_and_add_values(ud->fit_parameters);
+    const PetscReal *x;
 
+    VecGetArrayRead(X, &x);
+
+    // Update fit parameters from optimizer
+    ud->fit_parameters->from_array(x, ud->fit_parameters->size());
+    // Model spectra based on new fit parameters
+    update_background_user_data(ud);
+    ud->spectra_model = ud->fit_model->model_spectrum_mp(ud->fit_parameters, ud->elements, ud->energy_range);
+    // Add background
+    ud->spectra_model += ud->spectra_background;
+    // Remove nan's and inf's
+    ud->spectra_model = (ArrayTr<double>)ud->spectra_model.unaryExpr([ud](double v) { return std::isfinite(v) ? v : ud->normalizer; });
+
+    ArrayTr<double> diff = ud->spectra - ud->spectra_model;
+    //diff = diff / ud->normalizer;
+    diff = diff.pow(2.0);
+    diff *= ud->weights;
+    *f = diff.sum();
+    
+    VecRestoreArrayRead(X, &x);
+    /*
+    ud->cur_itr++;
+    if (ud->status_callback != nullptr)
+    {
+        try
+        {
+            (*ud->status_callback)(ud->cur_itr, ud->total_itr);
+        }
+        catch (...)
+        {
+            logI << "Cancel fitting" << std::endl;
+            *userbreak = 1;
+        }
+    }
+    */
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
+
+
+
+// ------------------------------------------------------------ 
+/*
 PetscErrorCode EvaluateJacobian(Tao tao, Vec X, Mat J, Mat Jpre, void *ptr)
 {
-    /* Jacobian is not changing here, so use a empty dummy function here.  J[m][n] = df[m]/dx[n] = A[m][n] for linear least square */
+    // Jacobian is not changing here, so use a empty dummy function here.  J[m][n] = df[m]/dx[n] = A[m][n] for linear least square 
     PetscFunctionBegin;
     PetscFunctionReturn(PETSC_SUCCESS);
 }
+
  // ------------------------------------------------------------ 
 
 PetscErrorCode EvaluateRegularizerObjectiveAndGradient(Tao tao, Vec X, PetscReal *f_reg, Vec G_reg, void *ptr)
@@ -144,11 +194,11 @@ PetscErrorCode EvaluateRegularizerHessianProd(Mat Hreg, Vec in, Vec out)
 
 PetscErrorCode EvaluateRegularizerHessian(Tao tao, Vec X, Mat Hreg, void *ptr)
 {
-    /* Hessian for regularizer objective = 0.5*x'*x is identity matrix, and is not changing*/
+    // Hessian for regularizer objective = 0.5*x'*x is identity matrix, and is not changing
     PetscFunctionBegin;
     PetscFunctionReturn(PETSC_SUCCESS);
 }
-
+*/
 // ------------------------------------------------------------ 
 // ------------------------------------------------------------ 
 
@@ -172,7 +222,7 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     PetscFunctionBeginUser;
     User_Data<double> ud;
 
-    Vec  res, x, xlb, xub; //b, xGT,
+    Vec  rx, x, xlb, xub; //b, xGT,
     PetscReal   hist[100], resid[100], v1, v2;
     Mat  A, Hreg;
     PetscInt    lits[100], M, N;
@@ -200,7 +250,7 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
         return OPTIMIZER_OUTCOME::STOPPED;
     }
 
-    int total_itr = 2000;
+    int total_itr = 80000;
     fill_user_data(ud, &dfit_params, &dspectra, &delements_to_fit, &dmodel, energy_range, status_callback, total_itr, use_weights);
 /*
     std::vector<double> fitp_arr = fit_params->to_array();
@@ -215,14 +265,14 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
 
     std::vector<double> lower_bound = dfit_params.lower_to_array();
     std::vector<double> upper_bound = dfit_params.upper_to_array();
-    int len = fit_params->size();
+    int len = lower_bound.size();
     N = len;
     int* indices = new int[len];
     for (int i = 0; i < len; ++i)
     {
         indices[i] = i;
     }
-
+/*
     int slen = ud.spectra.size();
     M = slen;
     int* sindices = new int[slen];
@@ -230,14 +280,20 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     {
         sindices[i] = i;
     }
-
+*/
     Tao tao;
-    int argc = 0;
-    char **argv = nullptr;
+    TaoConvergedReason reason;
+    int argc = 1;
+    char **argv;
+    argv = new char*[1];
+    argv[0] = new char[17];
+    strcpy(argv[0], "-tao_fd_gradient");
+    argv[0][16] = '\0';
     PetscInitialize(&argc, &argv, (char *)0, (char *)0);
     // Create TAO solver and set desired solution method 
     TaoCreate(PETSC_COMM_SELF, &tao);
-    TaoSetType(tao, TAOBRGN);
+    //TaoSetType(tao, TAOBRGN);
+    TaoSetType(tao, TAOBLMVM);
 
 
     // User set application context: A, D matrice, and b vector. 
@@ -247,12 +303,14 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     VecCreateSeq(PETSC_COMM_SELF, N, &x);
     VecCreateSeq(PETSC_COMM_SELF, N, &xlb);
     VecCreateSeq(PETSC_COMM_SELF, N, &xub);
-    VecCreateSeq(PETSC_COMM_SELF, M, &res);
+   // VecCreateSeq(PETSC_COMM_SELF, M, &res);
+
+
 
     VecSetValues(xlb, len, indices, &lower_bound[0], INSERT_VALUES);
     VecSetValues(xub, len, indices, &upper_bound[0], INSERT_VALUES);
     VecSetValues(x, len, indices, &fitp_arr[0], INSERT_VALUES);
-    VecSetValues(res, slen, sindices, ud.spectra.data(), INSERT_VALUES);
+ //   VecSetValues(res, slen, sindices, ud.spectra.data(), INSERT_VALUES);
 
 
     MatCreate(PETSC_COMM_WORLD, &A);
@@ -262,21 +320,26 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     //FormStartingPoint(x, &user);
 
     // Bind x to tao->solution. 
+    //VecView(x, PETSC_VIEWER_STDOUT_WORLD);
     TaoSetSolution(tao, x);
     // Sets the upper and lower bounds of x 
     TaoSetVariableBounds(tao, xlb, xub);
 
+    TaoSetObjective(tao, EvaluateResidual2, (void *)&ud);
+    TaoSetGradient(tao, nullptr, TaoDefaultComputeGradient, nullptr);
+
+
     // Bind user.D to tao->data->D 
     //TaoBRGNSetDictionaryMatrix(tao, user.D);
-    TaoBRGNSetDictionaryMatrix(tao, nullptr);
+    //TaoBRGNSetDictionaryMatrix(tao, nullptr);
 
     // Set the residual function and Jacobian routines for least squares. 
-    TaoSetResidualRoutine(tao, res, EvaluateResidual, (void *)&ud);
+    //TaoSetResidualRoutine(tao, res, EvaluateResidual, (void *)&ud);
     // Jacobian matrix fixed as user.A for Linear least square problem. 
-    TaoSetJacobianResidualRoutine(tao, A, A, EvaluateJacobian, (void *)&ud);
+    //TaoSetJacobianResidualRoutine(tao, A, A, EvaluateJacobian, (void *)&ud);
 
     // User set the regularizer objective, gradient, and hessian. Set it the same as using l2prox choice, for testing purpose.  
-    TaoBRGNSetRegularizerObjectiveAndGradientRoutine(tao, EvaluateRegularizerObjectiveAndGradient, (void *)&ud);
+    //TaoBRGNSetRegularizerObjectiveAndGradientRoutine(tao, EvaluateRegularizerObjectiveAndGradient, (void *)&ud);
     /*
     // User defined regularizer Hessian setup, here is identity shell matrix 
     MatCreate(PETSC_COMM_SELF, &Hreg);
@@ -290,17 +353,26 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     TaoSetFromOptions(tao);
 
     ////TaoSetConvergenceHistory(tao, hist, resid, 0, lits, 100, PETSC_TRUE);
-
+    TaoSetMaximumFunctionEvaluations(tao, total_itr);
     // Perform the Solve 
     TaoSolve(tao);
 
+    TaoView(tao, PETSC_VIEWER_STDOUT_WORLD);
+    TaoGetConvergedReason(tao, &reason);
+    logI<<"reason = "<<reason<<"\n\n";
     // Save x (reconstruction of object) vector to a binary file, which maybe read from MATLAB and convert to a 2D image for comparison. 
     //PetscViewerBinaryOpen(PETSC_COMM_SELF, resultFile, FILE_MODE_WRITE, &fd);
     //VecView(x, fd);
     //PetscViewerDestroy(&fd);
-    VecGetValues(x, len, indices, &fitp_arr[0]);
-    dfit_params.from_array(fitp_arr);
-    dfit_params.print();
+
+    TaoGetSolution(tao, &rx);
+    VecView(rx, PETSC_VIEWER_STDOUT_WORLD);
+    VecGetValues(rx, len, indices, &fitp_arr[0]);
+    //dfit_params.from_array(fitp_arr);
+    //dfit_params.print();
+    
+    
+    
     // compute the error 
     //VecAXPY(x, -1, xGT);
     //VecNorm(x, NORM_2, &v1);
@@ -312,7 +384,7 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
 
     // Free PETSc data structures 
     VecDestroy(&x);
-    VecDestroy(&res);
+    //VecDestroy(&res);
     //MatDestroy(&Hreg);
     // Free user data structures 
     //MatDestroy(&A);

@@ -86,6 +86,14 @@ int residuals_mpfit(int m, int params_size, T_real *params, T_real *dy, T_real *
     // Remove nan's and inf's
      ud->spectra_model = (ArrayTr<T_real>)ud->spectra_model.unaryExpr([ud](T_real v) { return std::isfinite(v) ? v : ud->normalizer; });
 
+
+    T_real resid = 0.;
+    
+    ArrayTr<T_real> diff = ud->spectra - ud->spectra_model;
+    diff = diff / ud->normalizer;
+    diff = diff.pow(2.0);
+    diff *= ud->weights;    
+
     //Calculate residuals
     for (int i=0; i<m; i++)
     {
@@ -93,31 +101,7 @@ int residuals_mpfit(int m, int params_size, T_real *params, T_real *dy, T_real *
         //T_real n_model = ud->spectra_model[i] / ud->norm_arr[i];
         //dy[i] = pow((n_raw - n_model), (T_real)2.0) * ud->weights[i];
         
-        T_real n_raw = ud->spectra[i] / ud->normalizer;
-        T_real n_model = ud->spectra_model[i] / ud->normalizer;
-        dy[i] = pow((n_raw - n_model), (T_real)2.0) * ud->weights[i];
-        
-
-        //dy[i] = pow((ud->spectra[i] - ud->spectra_model[i]), (T_real)2.0) * ud->weights[i];
-		if (std::isfinite(dy[i]) == false)
-		{
-            if(first)
-            {
-                first = false;
-			    logE << "Spectra["<<i<<"] = "<< ud->spectra[i] << " ::spectra_model["<<i<<"] = " << ud->spectra_model[i] << "  ::weights["<<i<<"] = " << ud->weights[i]<<"\n";
-                logE<<" \n Diff Param \n";
-                for(auto &itr : prev_fit_p)
-                {
-                    if(itr.second.value != ud->fit_parameters->at(itr.first).value)
-                    {
-                        logE<<itr.first<<" : Old = "<<itr.second.value<<" ; New = "<< ud->fit_parameters->at(itr.first).value <<"\n";
-                    }
-                }
-                logE<<" \n \n";
-                ud->fit_parameters->print_non_fixed();
-            }
-            dy[i] = ud->normalizer;
-		}
+        dy[i] = diff.sum();
     }
 	
     ud->cur_itr++;
@@ -155,7 +139,18 @@ int gen_residuals_mpfit(int m, int params_size, T_real *params, T_real *dy, T_re
     // Remove nan's and inf's
     //ud->spectra_model = (ArrayTr<T_real>)ud->spectra_model.unaryExpr([](T_real v) { return std::isfinite(v) ? v : (T_real)0.0; });
     // 
-    
+
+    ArrayTr<T_real> diff = ud->spectra - ud->spectra_model;
+    diff = diff / ud->normalizer;
+    diff = diff.pow(2.0);
+    diff *= ud->weights;    
+
+    //Calculate residuals
+    for (int i=0; i<m; i++)
+    {
+        dy[i] = diff.sum();
+    }
+    /*
     // Calculate residuals
     for (int i=0; i<m; i++)
     {
@@ -169,8 +164,9 @@ int gen_residuals_mpfit(int m, int params_size, T_real *params, T_real *dy, T_re
 			//dy[i] = ud->spectra[i] + ud->spectra_model[i];
             dy[i] = std::numeric_limits<T_real>::quiet_NaN();
 		}
-        */
+        
     }
+    */
 
     return 0;
 }
@@ -534,7 +530,8 @@ OPTIMIZER_OUTCOME MPFit_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fit_p
     result.resid = &resid[0];
     result.covar = &covar[0];
 
-    this->_last_outcome = mpfit(residuals_mpfit<T_real>, (int)energy_range.count(), (int)fitp_arr.size(), &fitp_arr[0], &par[0], &_options, (void *) &ud, &result);
+    //this->_last_outcome = mpfit(residuals_mpfit<T_real>, (int)energy_range.count(), (int)fitp_arr.size(), &fitp_arr[0], &par[0], &_options, (void *) &ud, &result);
+    this->_last_outcome = mpfit(residuals_mpfit<T_real>, (int)fitp_arr.size()*2, (int)fitp_arr.size(), &fitp_arr[0], &par[0], &_options, (void *) &ud, &result);
 
 	logI<< detailed_outcome(this->_last_outcome) << "\n";
 
@@ -681,7 +678,7 @@ OPTIMIZER_OUTCOME MPFit_Optimizer<T_real>::minimize_func(Fit_Parameters<T_real> 
     result.xerror = &perror[0];
     result.resid = &resid[0];
 
-    info = mpfit(gen_residuals_mpfit<T_real>, (int)energy_range.count(), (int)fitp_arr.size(), &fitp_arr[0], &par[0], &_options, (void*)&ud, &result);
+    info = mpfit(gen_residuals_mpfit<T_real>, (int)fitp_arr.size(), (int)fitp_arr.size(), &fitp_arr[0], &par[0], &_options, (void*)&ud, &result);
     
     this->_last_outcome = info;
 
