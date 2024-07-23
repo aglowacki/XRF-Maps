@@ -133,8 +133,9 @@ PetscErrorCode EvaluateResidual2(Tao tao, Vec X, PetscReal *f, void *ptr)
     ud->spectra_model = (ArrayTr<double>)ud->spectra_model.unaryExpr([ud](double v) { return std::isfinite(v) ? v : ud->normalizer; });
 
     ArrayTr<double> diff = ud->spectra - ud->spectra_model;
-    //diff = diff / ud->normalizer;
-    diff = diff.pow(2.0);
+    diff = diff / ud->normalizer;
+    //diff = diff.pow(2.0);
+    diff = Eigen::abs(diff);
     diff *= ud->weights;
     *f = diff.sum();
     
@@ -242,15 +243,15 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     {
         dfit_params.add_parameter(Fit_Param<double>(itr->second.name, static_cast<double>(itr->second.min_val), static_cast<double>(itr->second.max_val), static_cast<double>(itr->second.value), static_cast<double>(itr->second.step_size), itr->second.bound_type));
     }
-
-    dfit_params.print();
+    //logI<<"\n-=-=-=-=-==-=-=-=-=-==-\n\n";
+    //dfit_params.print();
     std::vector<double> fitp_arr = dfit_params.to_array();
     if (fitp_arr.size() == 0)
     {
         return OPTIMIZER_OUTCOME::STOPPED;
     }
 
-    int total_itr = 80000;
+    int total_itr = 1000;
     fill_user_data(ud, &dfit_params, &dspectra, &delements_to_fit, &dmodel, energy_range, status_callback, total_itr, use_weights);
 /*
     std::vector<double> fitp_arr = fit_params->to_array();
@@ -289,12 +290,19 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     argv[0] = new char[17];
     strcpy(argv[0], "-tao_fd_gradient");
     argv[0][16] = '\0';
+
     PetscInitialize(&argc, &argv, (char *)0, (char *)0);
     // Create TAO solver and set desired solution method 
     TaoCreate(PETSC_COMM_SELF, &tao);
     //TaoSetType(tao, TAOBRGN);
     TaoSetType(tao, TAOBLMVM);
+    //TaoSetType(tao, TAOBNCG);
+    //TaoSetType(tao, TAOBQNLS);
+    //TaoSetType(tao, TAOBQNKLS); // does not work
+    //TaoSetType(tao, TAOBQNKTR); // does not work
+    //TaoSetType(tao, TAOBQNKTL); // does not work
 
+    TaoSetTolerances(tao, 1.0e-11, 1.0e-11, 1.8e-11);
 
     // User set application context: A, D matrice, and b vector. 
     //InitializeUserData(&user));
@@ -327,6 +335,7 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
 
     TaoSetObjective(tao, EvaluateResidual2, (void *)&ud);
     TaoSetGradient(tao, nullptr, TaoDefaultComputeGradient, nullptr);
+    TaoSetHessian(tao, nullptr, nullptr, TaoDefaultComputeHessian, nullptr);
 
 
     // Bind user.D to tao->data->D 
@@ -350,10 +359,11 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     TaoBRGNSetRegularizerHessianRoutine(tao, Hreg, EvaluateRegularizerHessian, (void *)&ud);
     */
     // Check for any TAO command line arguments 
-    TaoSetFromOptions(tao);
+    //TaoSetFromOptions(tao);
 
     ////TaoSetConvergenceHistory(tao, hist, resid, 0, lits, 100, PETSC_TRUE);
     TaoSetMaximumFunctionEvaluations(tao, total_itr);
+    TaoSetMaximumIterations(tao, total_itr);
     // Perform the Solve 
     TaoSolve(tao);
 
@@ -368,11 +378,21 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     TaoGetSolution(tao, &rx);
     VecView(rx, PETSC_VIEWER_STDOUT_WORLD);
     VecGetValues(rx, len, indices, &fitp_arr[0]);
-    //dfit_params.from_array(fitp_arr);
+    dfit_params.from_array(fitp_arr);
     //dfit_params.print();
     
-    
-    
+    for(auto itr = fit_params->begin(); itr != fit_params->end(); itr++)
+    {
+        if(dfit_params.contains(itr->first))
+        {
+            if(dfit_params.at(itr->first).bound_type != E_Bound_Type::FIXED)
+            {
+                logI<<itr->first<<" : diff : "<<(*fit_params)[itr->first].value - dfit_params.at(itr->first).value<< "\n";
+            }
+            (*fit_params)[itr->first].value = static_cast<T_real>(dfit_params.at(itr->first).value);
+        } 
+    }
+    //fit_params->print();
     // compute the error 
     //VecAXPY(x, -1, xGT);
     //VecNorm(x, NORM_2, &v1);
