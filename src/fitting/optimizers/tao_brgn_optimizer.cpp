@@ -77,7 +77,7 @@ PetscErrorCode EvaluateResidual(Tao tao, Vec X, Vec res, void *ptr)
     ud->fit_parameters->from_array(x, ud->fit_parameters->size());
     // Model spectra based on new fit parameters
     update_background_user_data(ud);
-    ud->spectra_model = ud->fit_model->model_spectrum_mp(ud->fit_parameters, ud->elements, ud->energy_range);
+    ud->spectra_model = ud->fit_model->model_spectrum(ud->fit_parameters, ud->elements, nullptr, ud->energy_range);
     // Add background
     ud->spectra_model += ud->spectra_background;
     // Remove nan's and inf's
@@ -133,11 +133,12 @@ PetscErrorCode EvaluateResidual2(Tao tao, Vec X, PetscReal *f, void *ptr)
     ud->spectra_model = (ArrayTr<double>)ud->spectra_model.unaryExpr([ud](double v) { return std::isfinite(v) ? v : ud->normalizer; });
 
     ArrayTr<double> diff = ud->spectra - ud->spectra_model;
-    diff = diff / ud->normalizer;
-    //diff = diff.pow(2.0);
-    diff = Eigen::abs(diff);
+    //diff = diff / ud->normalizer;
+    //diff = Eigen::abs(diff);
+    diff = diff.pow(2.0);
     diff *= ud->weights;
-    *f = diff.sum();
+    //VecTDot(diff, diff, f);
+    *f = diff.sum() / diff.size(); // do dot product of diff
     
     VecRestoreArrayRead(X, &x);
     /*
@@ -251,7 +252,7 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
         return OPTIMIZER_OUTCOME::STOPPED;
     }
 
-    int total_itr = 1000;
+    int total_itr = 100000;
     fill_user_data(ud, &dfit_params, &dspectra, &delements_to_fit, &dmodel, energy_range, status_callback, total_itr, use_weights);
 /*
     std::vector<double> fitp_arr = fit_params->to_array();
@@ -288,22 +289,24 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     char **argv;
     argv = new char*[1];
     argv[0] = new char[17];
-    strcpy(argv[0], "-tao_fd_gradient");
+    strcpy(argv[0], "-tao_converged_reason");
     argv[0][16] = '\0';
 
     PetscInitialize(&argc, &argv, (char *)0, (char *)0);
     // Create TAO solver and set desired solution method 
     TaoCreate(PETSC_COMM_SELF, &tao);
     //TaoSetType(tao, TAOBRGN);
-    TaoSetType(tao, TAOBLMVM);
-    //TaoSetType(tao, TAOBNCG);
-    //TaoSetType(tao, TAOBQNLS);
+    //TaoSetType(tao, TAOBLMVM); // do not use, will be depricated
+    //TaoSetType(tao, TAOBNCG); // baseline
+    TaoSetType(tao, TAOBQNLS); 
     //TaoSetType(tao, TAOBQNKLS); // does not work
     //TaoSetType(tao, TAOBQNKTR); // does not work
     //TaoSetType(tao, TAOBQNKTL); // does not work
 
-    TaoSetTolerances(tao, 1.0e-11, 1.0e-11, 1.8e-11);
-
+    //TaoSetTolerances(tao, 1.0e-11, 1.0e-11, 1.8e-11);
+// setup tao command line
+// go to bncg.c and look at params
+// up num iter
     // User set application context: A, D matrice, and b vector. 
     //InitializeUserData(&user));
 
@@ -335,8 +338,9 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
 
     TaoSetObjective(tao, EvaluateResidual2, (void *)&ud);
     TaoSetGradient(tao, nullptr, TaoDefaultComputeGradient, nullptr);
-    TaoSetHessian(tao, nullptr, nullptr, TaoDefaultComputeHessian, nullptr);
+   // TaoSetHessian(tao, nullptr, nullptr, TaoDefaultComputeHessian, nullptr); // only for bqnkls
 
+//  "-tao_monitor_solution"
 
     // Bind user.D to tao->data->D 
     //TaoBRGNSetDictionaryMatrix(tao, user.D);
