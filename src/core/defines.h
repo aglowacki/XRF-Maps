@@ -51,13 +51,14 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <iomanip>
 
 static std::time_t now_c;
 #define logit now_c=std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());std::cout<<std::put_time(std::localtime(&now_c),"[%F_%T]\t")<<__FILE__<<"::"<<__FUNCTION__<<"():"<<__LINE__<<"\t"
 #define logit_s std::cout
 #define logE logit<<"\033[1;31mError: \033[0;m"
 #define logW logit<<"\033[1;33mWarning: \033[0;m"
-#define logI logit<<"Info: "
+#define logI logit<<std::setprecision (15)<<"Info: "
 
 #if defined _WIN32 || defined __CYGWIN__
   #pragma warning( disable : 4251 4127 4996 4505 4244 )

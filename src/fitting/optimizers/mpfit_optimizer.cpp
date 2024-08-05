@@ -83,6 +83,7 @@ int residuals_mpfit(int m, int params_size, T_real *params, T_real *dy, T_real *
     ud->spectra_model = ud->fit_model->model_spectrum_mp(ud->fit_parameters, ud->elements, ud->energy_range);
     // Add background
     ud->spectra_model += ud->spectra_background;
+    ud->spectra_model = (ArrayTr<T_real>)(ud->spectra_model.log10());
     // Remove nan's and inf's
      ud->spectra_model = (ArrayTr<T_real>)ud->spectra_model.unaryExpr([ud](T_real v) { return std::isfinite(v) ? v : ud->normalizer; });
 

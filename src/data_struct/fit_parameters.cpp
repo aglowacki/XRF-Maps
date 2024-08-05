@@ -228,6 +228,12 @@ void Fit_Parameters<T_real>::from_array(const T_real* arr, size_t arr_size)
     {
         if (itr.second.opt_array_index > -1 && itr.second.opt_array_index < (int)arr_size)
         {
+            /* // for debugging
+            if(itr.second.value != arr[itr.second.opt_array_index])
+            {
+                logI<<itr.first<<"["<<itr.second.opt_array_index<<"] old = " <<itr.second.value <<" : new = "<< arr[itr.second.opt_array_index] << "\n";
+            }
+            */
             itr.second.value = arr[itr.second.opt_array_index];
         }
     }
@@ -379,10 +385,16 @@ void Fit_Parameters<T_real>::update_value_to_constraints()
 template<typename T_real>
 void Fit_Parameters<T_real>::print()
 {
-    logit_s << "     Name  \t value  \t min  \t max  \t step size \t fitting\n\n";
+    logit_s << "     Name  \t\t value  \t min  \t max  \t step size \t fitting\n\n";
     for(const auto& itr : _params)
     {
-        logit_s<<" "<<itr.first<<" \t "<<itr.second.value<<" \t " << itr.second.min_val << " \t " << itr.second.max_val << " \t " << itr.second.step_size << " \t " <<itr.second.bound_type_str() << "\n";
+        int n = 28 - itr.first.length();
+        std::string spaces = "";
+        for(int i=0; i < n; i++)
+        {
+            spaces += " ";
+        }
+        logit_s<<" "<<itr.first<<spaces<<itr.second.value<<" \t\t " << itr.second.min_val << " \t " << itr.second.max_val << " \t " << itr.second.step_size << " \t " <<itr.second.bound_type_str() << "\n";
     }
     logit_s<<"\n";
 
@@ -393,11 +405,19 @@ void Fit_Parameters<T_real>::print()
 template<typename T_real>
 void Fit_Parameters<T_real>::print_non_fixed()
 {
+    logit_s << "     Name  \t\t value  \t min  \t max  \t step size \t fitting\n\n";
     for(const auto& itr : _params)
     {
         if(itr.second.bound_type != E_Bound_Type::FIXED)
         {
-            logit_s<<" [ "<<itr.first<<" ] = "<<itr.second.value<<"  "<<itr.second.bound_type_str() << "\n";
+            int n = 28 - itr.first.length();
+            std::string spaces = "";
+            for(int i=0; i < n; i++)
+            {
+                spaces += " ";
+            }
+            logit_s<<" "<<itr.first<<spaces<<itr.second.value<<" \t\t " << itr.second.min_val << " \t " << itr.second.max_val << " \t " << itr.second.step_size << " \t " <<itr.second.bound_type_str() << "\n";
+            //logit_s<<" [ "<<itr.first<<" ] = "<<itr.second.value<<"  "<<itr.second.bound_type_str() << "\n";
         }
     }
     logit_s<<"\n";
