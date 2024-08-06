@@ -91,7 +91,7 @@ int residuals_mpfit(int m, int params_size, T_real *params, T_real *dy, T_real *
     T_real resid = 0.;
     
     ArrayTr<T_real> diff = ud->spectra - ud->spectra_model;
-    diff = diff / ud->normalizer;
+    //diff = diff / ud->normalizer;
     diff = diff.pow(2.0);
     diff *= ud->weights;    
 

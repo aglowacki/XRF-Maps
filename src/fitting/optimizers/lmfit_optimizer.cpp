@@ -84,8 +84,8 @@ void residuals_lmfit( const T_real *par, int m_dat, const void *data, T_real *fv
     // Calculate residuals
     for (int i = 0; i < m_dat; i++ )
     {
-        T_real n_raw = ud->spectra[i] / ud->normalizer;
-        T_real n_model = ud->spectra_model[i] / ud->normalizer;
+        T_real n_raw = ud->spectra[i];// / ud->normalizer;
+        T_real n_model = ud->spectra_model[i];// / ud->normalizer;
         fvec[i] = pow((n_raw - n_model), (T_real)2.0) * ud->weights[i];
 		//fvec[i] = pow((ud->spectra[i] - ud->spectra_model[i]), (T_real)2.0) * ud->weights[i];
 		if (std::isfinite(fvec[i]) == false)

@@ -233,6 +233,7 @@ void fill_gen_user_data(Gen_User_Data<T_real>& ud,
     ud.func = gen_func;
     // set spectra to fit
     ud.spectra = spectra->sub_spectra(energy_range.min, energy_range.count());
+    ud.spectra = (ArrayTr<T_real>)ud.spectra.log10();
     ArrayTr<T_real> norm_arr = ud.spectra.pow(2.0); // square the spectra and sum it
     ud.normalizer = norm_arr.sum();
     //not allocating memory. see https://eigen.tuxfamily.org/dox/group__TutorialMapClass.html

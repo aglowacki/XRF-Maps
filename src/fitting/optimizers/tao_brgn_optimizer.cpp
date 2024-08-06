@@ -58,58 +58,7 @@ namespace optimizers
 {
 
 // ------------------------------------------------------------ 
-/*
-PetscErrorCode EvaluateResidual(Tao tao, Vec X, Vec res, void *ptr)
-{
-    PetscFunctionBegin;
-    bool first = true;
-    User_Data<double>* ud = (User_Data<double>*)(ptr);
-    // Debug to find which param changed last
-    Fit_Parameters<double> prev_fit_p;
-    prev_fit_p.update_and_add_values(ud->fit_parameters);
-    const PetscReal *x;
-    PetscReal *f;
 
-    VecGetArrayRead(X, &x);
-    VecGetArray(res, &f);
-
-    // Update fit parameters from optimizer
-    ud->fit_parameters->from_array(x, ud->fit_parameters->size());
-    // Model spectra based on new fit parameters
-    update_background_user_data(ud);
-    ud->spectra_model = ud->fit_model->model_spectrum(ud->fit_parameters, ud->elements, nullptr, ud->energy_range);
-    // Add background
-    ud->spectra_model += ud->spectra_background;
-    // Remove nan's and inf's
-    ud->spectra_model = (ArrayTr<double>)ud->spectra_model.unaryExpr([ud](double v) { return std::isfinite(v) ? v : ud->normalizer; });
-
-    ArrayTr<double> diff = ud->spectra - ud->spectra_model;
-    diff = diff.pow(2.0);
-    diff *= ud->weights;
-    for(int i=0; i < diff.size(); i++)
-    {
-        f[i] = diff(i);
-    }
-    VecRestoreArrayRead(X, &x);
-    VecRestoreArray(res, &f);
-    /*
-    ud->cur_itr++;
-    if (ud->status_callback != nullptr)
-    {
-        try
-        {
-            (*ud->status_callback)(ud->cur_itr, ud->total_itr);
-        }
-        catch (...)
-        {
-            logI << "Cancel fitting" << std::endl;
-            *userbreak = 1;
-        }
-    }
-    
-    PetscFunctionReturn(PETSC_SUCCESS);
-}
-*/
 PetscErrorCode EvaluateResidual2(Tao tao, Vec X, PetscReal *f, void *ptr)
 {
     PetscFunctionBegin;
@@ -133,9 +82,8 @@ PetscErrorCode EvaluateResidual2(Tao tao, Vec X, PetscReal *f, void *ptr)
         if(pval != itr->second.value)
         {   
             double df = itr->second.value - pval;
-            //logI<<itr->first<<" : diff : "<<df<< " : old val = "<< pval << " : new val = "<< itr->second.value<<"\n";
-            //(*ud->fit_parameters)[itr->first].value = pval + (df * 10.0);
-            //logI<<itr->first<<" val = "<< (*ud->fit_parameters)[itr->first].value << "\n";
+            logI<<itr->first<<" : diff : "<<df<< " : old val = "<< pval << " : new val = "<< itr->second.value<<"\n";
+            
         } 
     }
 */
@@ -145,7 +93,7 @@ PetscErrorCode EvaluateResidual2(Tao tao, Vec X, PetscReal *f, void *ptr)
     // Add background
     ud->spectra_model += ud->spectra_background;
 
-    ud->spectra_model = (ArrayTr<double>)(ud->spectra_model.log10());
+ //   ud->spectra_model = (ArrayTr<double>)(ud->spectra_model.log10());
     // Remove nan's and inf's
     ud->spectra_model = (ArrayTr<double>)ud->spectra_model.unaryExpr([ud](double v) { return std::isfinite(v) ? v : ud->normalizer; });
 
@@ -176,6 +124,76 @@ PetscErrorCode EvaluateResidual2(Tao tao, Vec X, PetscReal *f, void *ptr)
     PetscFunctionReturn(PETSC_SUCCESS);
 }
 
+// ------------------------------------------------------------ 
+
+PetscErrorCode EvaluateResidual3(Tao tao, Vec X, PetscReal *f, void *ptr)
+{
+    PetscFunctionBegin;
+    bool first = true;
+    
+    Gen_User_Data<double>* ud = (Gen_User_Data<double>*)(ptr);
+
+    // Debug to find which param changed last
+    Fit_Parameters<double> prev_fit_p;
+    prev_fit_p.update_and_add_values(ud->fit_parameters);
+    const PetscReal *x;
+
+    VecGetArrayRead(X, &x);
+
+    // Update fit parameters from optimizer
+    ud->fit_parameters->from_array(x, ud->fit_parameters->size());
+
+    VecRestoreArrayRead(X, &x);
+/*
+    for(auto itr = ud->fit_parameters->begin(); itr != ud->fit_parameters->end(); itr++)
+    {
+        double pval = prev_fit_p.at(itr->first).value;
+        double df = itr->second.value - pval;
+        if(pval != itr->second.value || df > 0.0)
+        {   
+            //double df = itr->second.value - pval;
+            logI<<itr->first<<" : diff : "<<df<< " : old val = "<< pval << " : new val = "<< itr->second.value<<"\n";
+            
+        } 
+    }
+*/
+    // Model spectra based on new fit parameters
+    //update_background_user_data(ud);
+    ud->func(ud->fit_parameters, &(ud->energy_range), &(ud->spectra_model));
+    //ud->spectra_model = ud->fit_model->model_spectrum(ud->fit_parameters, ud->elements, nullptr, ud->energy_range);
+    // Add background
+    ud->spectra_model += ud->spectra_background;
+
+    //ud->spectra_model = (ArrayTr<double>)(ud->spectra_model.log10());
+    // Remove nan's and inf's
+    ud->spectra_model = (ArrayTr<double>)ud->spectra_model.unaryExpr([ud](double v) { return std::isfinite(v) ? v : ud->normalizer; });
+
+    ArrayTr<double> diff = ud->spectra - ud->spectra_model;
+    //diff = diff / ud->normalizer;
+    //diff = Eigen::abs(diff);
+    diff = diff.pow(2.0);
+    diff *= ud->weights;
+    //VecTDot(diff, diff, f);
+    *f = diff.sum() / diff.size(); // do dot product of diff
+    
+ //   logit<<"f = "<<*f<<"\n";
+    /*
+    ud->cur_itr++;
+    if (ud->status_callback != nullptr)
+    {
+        try
+        {
+            (*ud->status_callback)(ud->cur_itr, ud->total_itr);
+        }
+        catch (...)
+        {
+            logI << "Cancel fitting" << std::endl;
+            *userbreak = 1;
+        }
+    }
+    */
+    PetscFunctionReturn(PETSC_SUCCESS);
+}
 
 
 // ------------------------------------------------------------ 
@@ -285,7 +303,7 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
         return OPTIMIZER_OUTCOME::STOPPED;
     }
 
-    int total_itr = 100000;
+    int total_itr = 20000;
     fill_user_data(ud, &dfit_params, &dspectra, &delements_to_fit, &dmodel, energy_range, status_callback, total_itr, use_weights);
 /*
     std::vector<double> fitp_arr = fit_params->to_array();
@@ -328,7 +346,7 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     PetscInitialize(&argc, &argv, (char *)0, (char *)0);
     // Create TAO solver and set desired solution method 
     TaoCreate(PETSC_COMM_SELF, &tao);
-    //TaoSetType(tao, TAOBRGN);
+    //TaoSetType(tao, TAOBRGN); need TaoSetResidualRoutine()
     //TaoSetType(tao, TAOBLMVM); // do not use, will be depricated
     TaoSetType(tao, TAOBNCG); // baseline
     //TaoSetType(tao, TAOBQNLS); 
@@ -370,6 +388,7 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fi
     TaoSetVariableBounds(tao, xlb, xub);
 
     TaoSetObjective(tao, EvaluateResidual2, (void *)&ud);
+
     TaoSetGradient(tao, nullptr, TaoDefaultComputeGradient, nullptr);
    // TaoSetHessian(tao, nullptr, nullptr, TaoDefaultComputeHessian, nullptr); // only for bqnkls
 
@@ -465,7 +484,129 @@ OPTIMIZER_OUTCOME TAO_BRGN_Optimizer<T_real>::minimize_func(Fit_Parameters<T_rea
                                         Gen_Func_Def<T_real> gen_func,
                                         bool use_weights)
 {
-    return OPTIMIZER_OUTCOME::FAILED;
+        PetscFunctionBeginUser;
+    Gen_User_Data<T_real> ud;
+
+    Vec  rx, x, xlb, xub; //b, xGT,
+    PetscReal   hist[100], resid[100], v1, v2;
+    Mat  A, Hreg;
+    PetscInt    lits[100], M, N;
+
+    Fit_Parameters<double> dfit_params;
+    for(auto itr = fit_params->begin(); itr != fit_params->end(); itr++)
+    {
+        dfit_params.add_parameter(Fit_Param<double>(itr->second.name, static_cast<double>(itr->second.min_val), static_cast<double>(itr->second.max_val), static_cast<double>(itr->second.value), static_cast<double>(itr->second.step_size), itr->second.bound_type));    
+    }
+
+    dfit_params.print_non_fixed();
+    
+    std::vector<double> fitp_arr = dfit_params.to_array();
+    if (fitp_arr.size() == 0)
+    {
+        return OPTIMIZER_OUTCOME::STOPPED;
+    }
+    
+    for(auto itr = fit_params->begin(); itr != fit_params->end(); itr++)
+    {
+        (*fit_params)[itr->first].opt_array_index = dfit_params[itr->first].opt_array_index;        
+    }
+
+    int total_itr = 5000;
+    fill_gen_user_data(ud, fit_params, spectra, energy_range, background, gen_func, use_weights);
+
+
+    std::vector<double> lower_bound = dfit_params.lower_to_array();
+    std::vector<double> upper_bound = dfit_params.upper_to_array();
+    int len = lower_bound.size();
+    N = len;
+    int* indices = new int[len];
+    for (int i = 0; i < len; ++i)
+    {
+        indices[i] = i;
+    }
+
+    Tao tao;
+    TaoConvergedReason reason;
+    int argc = 1;
+    char **argv;
+    argv = new char*[1];
+    argv[0] = new char[17];
+    strcpy(argv[0], "-tao_converged_reason");
+    argv[0][16] = '\0';
+
+    PetscInitialize(&argc, &argv, (char *)0, (char *)0);
+    // Create TAO solver and set desired solution method 
+    TaoCreate(PETSC_COMM_SELF, &tao);
+    //TaoSetType(tao, TAOBRGN);
+    TaoSetType(tao, TAOBLMVM); // do not use, will be depricated
+    //TaoSetType(tao, TAOBNCG); // baseline
+    //TaoSetType(tao, TAOBQNLS); 
+    //TaoSetType(tao, TAOBQNKLS); // does not work
+    //TaoSetType(tao, TAOBQNKTR); // does not work
+    //TaoSetType(tao, TAOBQNKTL); // does not work
+
+    //TaoSetTolerances(tao, 1.0e-11, 1.0e-11, 1.8e-11);
+
+    // Allocate solution vector x,  and function vectors Ax-b, 
+    VecCreateSeq(PETSC_COMM_SELF, N, &x);
+    VecCreateSeq(PETSC_COMM_SELF, N, &xlb);
+    VecCreateSeq(PETSC_COMM_SELF, N, &xub);
+   // VecCreateSeq(PETSC_COMM_SELF, M, &res);
+
+    VecSetValues(xlb, len, indices, &lower_bound[0], INSERT_VALUES);
+    VecSetValues(xub, len, indices, &upper_bound[0], INSERT_VALUES);
+    VecSetValues(x, len, indices, &fitp_arr[0], INSERT_VALUES);
+ //   VecSetValues(res, slen, sindices, ud.spectra.data(), INSERT_VALUES);
+
+
+    MatCreate(PETSC_COMM_WORLD, &A);
+    MatSetType(A, MATSEQAIJ);
+
+    // Bind x to tao->solution. 
+    TaoSetSolution(tao, x);
+    // Sets the upper and lower bounds of x 
+    TaoSetVariableBounds(tao, xlb, xub);
+
+    TaoSetObjective(tao, EvaluateResidual3, (void *)&ud);
+    TaoSetGradient(tao, nullptr, TaoDefaultComputeGradient, nullptr);
+
+    ////TaoSetConvergenceHistory(tao, hist, resid, 0, lits, 100, PETSC_TRUE);
+    TaoSetMaximumFunctionEvaluations(tao, total_itr);
+    TaoSetMaximumIterations(tao, total_itr);
+    // Perform the Solve 
+    TaoSolve(tao);
+
+    TaoView(tao, PETSC_VIEWER_STDOUT_WORLD);
+    TaoGetConvergedReason(tao, &reason);
+    logI<<"reason = "<<reason<<"\n\n";
+
+
+    TaoGetSolution(tao, &rx);
+    VecView(rx, PETSC_VIEWER_STDOUT_WORLD);
+    VecGetValues(rx, len, indices, &fitp_arr[0]);
+    dfit_params.from_array(fitp_arr);
+    dfit_params.print_non_fixed();
+    
+    for(auto itr = fit_params->begin(); itr != fit_params->end(); itr++)
+    {
+        if(dfit_params.contains(itr->first))
+        {
+            if(dfit_params.at(itr->first).bound_type != E_Bound_Type::FIXED)
+            {
+                logI<<itr->first<<" : diff : "<<(*fit_params)[itr->first].value - dfit_params.at(itr->first).value<< "\n";
+            }
+            (*fit_params)[itr->first].value = static_cast<T_real>(dfit_params.at(itr->first).value);
+        } 
+    }
+    //fit_params->print();
+
+    TaoDestroy(&tao);
+    VecDestroy(&x);
+    VecDestroy(&xlb);
+    VecDestroy(&xub);
+    PetscFinalize();
+
+    return OPTIMIZER_OUTCOME::CONVERGED;
 }
 
 // ------------------------------------------------------------ 
