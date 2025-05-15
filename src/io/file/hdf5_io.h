@@ -5634,6 +5634,83 @@ public:
     //-----------------------------------------------------------------------------
 
     template<typename T_real>
+    bool save_fitted_mca(const std::string path, data_struct::Spectra_Volume<T_real>* spectra_volume)
+    {
+        std::lock_guard<std::mutex> lock(_mutex);
+
+        if (_cur_file_id < 0)
+        {
+            logE << "hdf5 file was never initialized. Call start_save_seq() before this function." << "\n";
+            return false;
+        }
+
+        std::chrono::time_point<std::chrono::system_clock> start, end;
+        start = std::chrono::system_clock::now();
+
+        hid_t    dset_id, dataspace_id, memoryspace_id;
+        herr_t status = 0;
+
+        hsize_t chunk_dims[3] = { 1,1,1 };
+        hsize_t dims_out[3] = { 1,1,1 };
+        hsize_t maxdims[3] = { H5S_UNLIMITED, H5S_UNLIMITED, H5S_UNLIMITED };
+        hsize_t offset[3] = { 0,0,0 };
+        hsize_t count[3] = { 1,1,1 };
+        hsize_t tmp_dims[3] = { 0,0,0 };
+
+        //H5T_FLOAT
+        dims_out[0] = spectra_volume->samples_size();
+        dims_out[1] = spectra_volume->rows();
+        dims_out[2] = spectra_volume->cols();
+        offset[0] = 0;
+        offset[1] = 0;
+        offset[2] = 0;
+        count[0] = dims_out[0];
+        count[1] = 1;
+        count[2] = 1;
+        chunk_dims[0] = dims_out[0];
+        chunk_dims[1] = 1;
+        chunk_dims[2] = 1;
+
+        _create_memory_space(3, count, memoryspace_id);
+
+        H5Sselect_hyperslab(memoryspace_id, H5S_SELECT_SET, offset, nullptr, count, nullptr);
+
+        if (false == _open_h5_dataset<T_real>(path, _cur_file_id, 3, dims_out, chunk_dims, dset_id, dataspace_id))
+        {
+            return false;
+        }
+
+        for (size_t row = 0; row < dims_out[1]; row++)
+        {
+            offset[1] = row;
+            for (size_t col = 0; col < dims_out[2]; col++)
+            {
+                const data_struct::Spectra<T_real>* spectra = &((*spectra_volume)[row][col]);
+                offset[2] = col;
+                H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset, nullptr, count, nullptr);
+
+                status = _write_h5d<T_real>(dset_id, memoryspace_id, dataspace_id, H5P_DEFAULT, (void*)&(*spectra)[0]);
+                if (status < 0)
+                {
+                    logE << " H5Dwrite failed to write spectra\n";
+                }
+            }
+        }
+
+        _close_h5_objects(_global_close_map);
+
+        end = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed_seconds = end - start;
+
+        logI << "elapsed time: " << elapsed_seconds.count() << "s" << "\n";
+
+        return true;
+
+    }
+
+    //-----------------------------------------------------------------------------
+
+    template<typename T_real>
     bool save_energy_calib(int spectra_size, T_real energy_offset, T_real energy_slope, T_real energy_quad)
     {
 

@@ -384,7 +384,7 @@ void load_and_fit_quatification_datasets(data_struct::Analysis_Job<double>* anal
             //Initialize the fit routine
             fit_routine->initialize(&model, &elements_to_fit, energy_range);
             //Fit the spectra
-            fit_routine->fit_spectra(&model, &quantification_standard->integrated_spectra, &elements_to_fit, quantification_standard->element_counts[fit_itr.first]);
+            fit_routine->fit_spectra(&model, &quantification_standard->integrated_spectra, &elements_to_fit, quantification_standard->element_counts[fit_itr.first], nullptr);
 
             quantification_standard->normalize_counts_by_time(fit_itr.first);
 

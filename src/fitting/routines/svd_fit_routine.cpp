@@ -105,7 +105,8 @@ template<typename T_real>
 optimizers::OPTIMIZER_OUTCOME SVD_Fit_Routine<T_real>::fit_spectra(const models::Base_Model<T_real>* const model,
                                                            const Spectra<T_real>* const spectra,
                                                            const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
-                                                           std::unordered_map<std::string, T_real>& out_counts)
+                                                           std::unordered_map<std::string, T_real>& out_counts,
+                                                        data_struct::Spectra<T_real>* fitted_spec)
 {
     Eigen::JacobiSVD<Eigen::Matrix<T_real, Eigen::Dynamic, Eigen::Dynamic> > svd(_fitmatrix, Eigen::ComputeThinU | Eigen::ComputeThinV );
     VectorTr<T_real> rhs = spectra->segment(this->_energy_range.min, this->_energy_range.count());

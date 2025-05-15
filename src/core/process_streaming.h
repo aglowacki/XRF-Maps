@@ -67,7 +67,7 @@ DLL_EXPORT data_struct::Stream_Block<T_real>* proc_spectra_block( data_struct::S
     for (auto& itr : stream_block->fitting_blocks)
     {
         std::unordered_map<std::string, T_real> counts_dict;
-        stream_block->fitting_blocks[itr.first].fit_routine->fit_spectra(stream_block->model, stream_block->spectra, stream_block->elements_to_fit, counts_dict);
+        stream_block->fitting_blocks[itr.first].fit_routine->fit_spectra(stream_block->model, stream_block->spectra, stream_block->elements_to_fit, counts_dict, nullptr);
         //make count / sec
         for (auto& el_itr : *(stream_block->elements_to_fit))
         {

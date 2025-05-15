@@ -165,10 +165,11 @@ DLL_EXPORT bool fit_single_spectra(fitting::routines::Base_Fit_Routine<T_real>* 
                         const data_struct::Fit_Element_Map_Dict<T_real>* const elements_to_fit,
                         data_struct::Fit_Count_Dict<T_real>* out_fit_counts,
                         size_t i,
-                        size_t j)
+                        size_t j,
+                       data_struct::Spectra<T_real>* fitted_spec)
 {
     std::unordered_map<std::string, T_real> counts_dict;
-    fit_routine->fit_spectra(model, spectra, elements_to_fit, counts_dict);
+    fit_routine->fit_spectra(model, spectra, elements_to_fit, counts_dict, fitted_spec);
     //save count / sec
     for (auto& el_itr : *elements_to_fit)
     {
@@ -253,12 +254,19 @@ DLL_EXPORT void proc_spectra(data_struct::Spectra_Volume<T_real>* spectra_volume
         //Allocate memeory to save fit counts
         data_struct::Fit_Count_Dict<T_real>* element_fit_count_dict = generate_fit_count_dict(&override_params->elements_to_fit, spectra_volume->rows(), spectra_volume->cols(), true);
 
+        data_struct::Spectra_Volume<T_real> fitted_volume;
+        // hack to save per pixel fitted spectra
+        if (itr.first == data_struct::Fitting_Routines::GAUSS_MATRIX
+        || itr.first == data_struct::Fitting_Routines::NNLS)
+        {
+            fitted_volume.resize_and_zero(spectra_volume->rows(), spectra_volume->cols(), spectra_volume->samples_size());
+        }
         for (size_t i = 0; i < spectra_volume->rows(); i++)
         {
             for (size_t j = 0; j < spectra_volume->cols(); j++)
             {
                 //logD<< i<<" "<<j<<"\n";
-                fit_job_queue->emplace(tp->enqueue(fit_single_spectra<T_real>, fit_routine, detector->model, &(*spectra_volume)[i][j], &override_params->elements_to_fit, element_fit_count_dict, i, j));
+                fit_job_queue->emplace(tp->enqueue(fit_single_spectra<T_real>, fit_routine, detector->model, &(*spectra_volume)[i][j], &override_params->elements_to_fit, element_fit_count_dict, i, j, &fitted_volume[i][j]));
             }
         }
 
@@ -288,6 +296,19 @@ DLL_EXPORT void proc_spectra(data_struct::Spectra_Volume<T_real>* spectra_volume
             || itr.first == data_struct::Fitting_Routines::NNLS
             || itr.first == data_struct::Fitting_Routines::SVD)
         {
+
+            std::string fitted_mca_save_path;
+            if (itr.first == data_struct::Fitting_Routines::GAUSS_MATRIX) 
+            {
+                fitted_mca_save_path ="/MAPS/matrix_fitted_mca";
+            }
+            else if (itr.first == data_struct::Fitting_Routines::NNLS)
+            {
+                fitted_mca_save_path ="/MAPS/nnls_fitted_mca";
+            }
+
+            io::file::HDF5_IO::inst()->save_fitted_mca(fitted_mca_save_path, &fitted_volume);
+
             fitting::routines::Matrix_Optimized_Fit_Routine<T_real>* matrix_fit = (fitting::routines::Matrix_Optimized_Fit_Routine<T_real>*)fit_routine;
             io::file::HDF5_IO::inst()->save_fitted_int_spectra(fit_routine->get_name(),
                 matrix_fit->fitted_integrated_spectra(),

@@ -302,7 +302,8 @@ template<typename T_real>
 OPTIMIZER_OUTCOME Matrix_Optimized_Fit_Routine<T_real>:: fit_spectra(const models::Base_Model<T_real>* const model,
                                                             const Spectra<T_real>* const spectra,
                                                             const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
-                                                            std::unordered_map<std::string, T_real>& out_counts)
+                                                            std::unordered_map<std::string, T_real>& out_counts,
+                                                            data_struct::Spectra<T_real>* fitted_spec)
 {
 
     Fit_Parameters<T_real> fit_params = model->fit_parameters();
@@ -374,7 +375,13 @@ OPTIMIZER_OUTCOME Matrix_Optimized_Fit_Routine<T_real>:: fit_spectra(const model
         
         model_spectra += background;
         model_spectra = (ArrayTr<T_real>)model_spectra.unaryExpr([](T_real v) { return std::isfinite(v) ? v : (T_real)0.0; });
-
+        if(fitted_spec != nullptr)
+        {
+            for( int i = this->_energy_range.min; i< this->_energy_range.count(); i++)
+            {
+                (*fitted_spec)[i] = model_spectra[i];
+            }
+        }
 		//lock and integrate results
 		{
             std::lock_guard<std::mutex> lock(_int_spec_mutex);

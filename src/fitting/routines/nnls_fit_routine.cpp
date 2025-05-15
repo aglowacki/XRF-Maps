@@ -169,7 +169,8 @@ template<typename T_real>
 OPTIMIZER_OUTCOME NNLS_Fit_Routine<T_real>::fit_spectra(const models::Base_Model<T_real>* const model,
                                                 const Spectra<T_real>* const spectra,
                                                 const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
-                                                std::unordered_map<std::string, T_real>& out_counts)
+                                                std::unordered_map<std::string, T_real>& out_counts,
+                                                data_struct::Spectra<T_real>* fitted_spec)
 {
 	data_struct::ArrayTr<T_real>* result;
     int num_iter;
@@ -238,7 +239,13 @@ OPTIMIZER_OUTCOME NNLS_Fit_Routine<T_real>::fit_spectra(const models::Base_Model
         spectra_model += model->escape_peak(spectra_model, ev, fit_params.value(STR_SI_ESCAPE));
     }
 
-
+    if(fitted_spec != nullptr)
+    {
+        for( int i = this->_energy_range.min; i< this->_energy_range.count(); i++)
+        {
+            (*fitted_spec)[i] = spectra_model[i];
+        }
+    }
     out_counts[STR_NUM_ITR] = static_cast<T_real>(num_iter);
     out_counts[STR_RESIDUAL] = npg;
 

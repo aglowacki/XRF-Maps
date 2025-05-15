@@ -177,7 +177,8 @@ template<typename T_real>
 OPTIMIZER_OUTCOME Param_Optimized_Fit_Routine<T_real>::fit_spectra(const models::Base_Model<T_real>* const model,
                                                            const Spectra<T_real>* const spectra,
                                                            const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
-                                                           std::unordered_map<std::string, T_real>& out_counts)
+                                                           std::unordered_map<std::string, T_real>& out_counts,
+                                                        data_struct::Spectra<T_real>* fitted_spec)
 {
     //int xmin = np.argmin(abs(x - (fitp.g.xmin - fitp.s.val[keywords.energy_pos[0]]) / fitp.s.val[keywords.energy_pos[1]]));
     //int xmax = np.argmin(abs(x - (fitp.g.xmax - fitp.s.val[keywords.energy_pos[0]]) / fitp.s.val[keywords.energy_pos[1]]));
