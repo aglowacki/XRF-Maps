@@ -1020,7 +1020,7 @@ public:
                     //std::string search_name = base_name + "_" + std::to_string(i) + ".hdf5"; 
                     //logI<< "searching "<< search_name << "\n";
                     //logI<< "loading "<< fname << "\n";
-                    _load_spectra_line_xspress3(itr.second, detector_num, &temp_vol[i]);
+                    _load_spectra_line_xspress3(itr.second, detector_num, &temp_vol[i], scan_info);
                     H5Gclose(itr.second);
                     i++;
                 }
@@ -1302,7 +1302,7 @@ public:
                 // start reading in spectra volume
                 // read whole dataset in as spec_row , then alloc spec_vol and copy
                 data_struct::Spectra_Line<T_real> spec_row;
-                if(false == _load_spectra_line_xspress3(file_id, detector_num, &spec_row))
+                if(false == _load_spectra_line_xspress3(file_id, detector_num, &spec_row, scan_info))
                 {
                     logW<<"Failed to load spectra data.\n";
                     _close_h5_objects(close_map);
@@ -2249,7 +2249,7 @@ public:
     //-----------------------------------------------------------------------------
 
     template<typename T_real>
-    bool load_spectra_line_xspress3(std::string path, size_t detector_num, data_struct::Spectra_Line<T_real>* spec_row)
+    bool load_spectra_line_xspress3(std::string path, size_t detector_num, data_struct::Spectra_Line<T_real>* spec_row, data_struct::Scan_Info<T_real>& scan_info)
     {
         std::lock_guard<std::mutex> lock(_mutex);
 
@@ -2265,7 +2265,7 @@ public:
         {
             return false;
         }
-        bool ret = _load_spectra_line_xspress3(file_id, detector_num, spec_row);
+        bool ret = _load_spectra_line_xspress3(file_id, detector_num, spec_row, scan_info);
         _close_h5_objects(close_map);
 
         end = std::chrono::system_clock::now();
@@ -2278,7 +2278,7 @@ public:
         //-----------------------------------------------------------------------------
 
     template<typename T_real>
-    bool _load_spectra_line_xspress3(hid_t file_id, size_t detector_num, data_struct::Spectra_Line<T_real>* spec_row)
+    bool _load_spectra_line_xspress3(hid_t file_id, size_t detector_num, data_struct::Spectra_Line<T_real>* spec_row, data_struct::Scan_Info<T_real>& scan_info)
     {
         std::stack<std::pair<hid_t, H5_OBJECTS> > close_map;
         hid_t  dset_id = -1, dataspace_id = -1, maps_grp_id = -1, scaler_grp_id = -1, scaler2_grp_id = -1, memoryspace_id = -1, memoryspace_meta_id = -1;
@@ -2302,6 +2302,17 @@ public:
         std::string real_time_dataset_name2 = "RealTime_" + std::to_string(detector_num);
 
         std::string outcounts_dataset_name2 = "OutputCounts_" + std::to_string(detector_num);
+
+        std::string reset_tick_name = "CHAN" + std::to_string(detector_num + 1) + "SCA1";
+        std::string reset_count_name = "CHAN" + std::to_string(detector_num + 1) + "SCA2";
+        std::string all_events_name = "CHAN" + std::to_string(detector_num + 1) + "SCA3";
+        std::string all_good_events_name = "CHAN" + std::to_string(detector_num + 1) + "SCA4";
+        std::string window_0_name = "CHAN" + std::to_string(detector_num + 1) + "SCA5";
+        std::string window_1_name = "CHAN" + std::to_string(detector_num + 1) + "SCA6";
+        std::string pileup_name = "CHAN" + std::to_string(detector_num + 1) + "SCA7";
+        const std::string dtfactor_name = "DTFactor";
+        const std::string dtpercent_name = "DTPercent";
+        const std::string event_width_name = "EventWidth";
 
         if (false == _open_h5_object(maps_grp_id, H5O_GROUP, close_map, "/entry/data", file_id, false, false))
         {
