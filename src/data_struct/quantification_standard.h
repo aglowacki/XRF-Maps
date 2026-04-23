@@ -64,7 +64,7 @@ namespace data_struct
 
 using namespace quantification::models;
 
-const static std::vector<data_struct::Electron_Shell> Shells_Quant_List({ data_struct::Electron_Shell::K_SHELL, data_struct::Electron_Shell::L_SHELL, data_struct::Electron_Shell::M_SHELL });
+const static std::vector<data_struct::Electron_Shell> Shells_Quant_List({ data_struct::Electron_Shell::K_Shell, data_struct::Electron_Shell::L_SHELL, data_struct::Electron_Shell::M_SHELL });
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------

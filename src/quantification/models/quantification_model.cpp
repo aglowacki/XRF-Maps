@@ -114,7 +114,7 @@ void Quantification_Model<T_real>::init_element_quant(Element_Quant<T_real>& ele
 
     switch(shell)
     {
-    case data_struct::Electron_Shell::K_SHELL:
+    case data_struct::Electron_Shell::K_Shell:
         ev = element_info->xrf.at("ka1") * (T_real)1000.0;
         element_quant.yield = element_info->yieldD.at("k");
         if( incident_energy > element_info->bindingE.at("K") )

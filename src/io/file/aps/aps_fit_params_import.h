@@ -1240,7 +1240,7 @@ DLL_EXPORT bool save_parameters_override(std::string path, Params_Override<T_rea
                 if (ratio != 1.0)
                 {
                     branching_ratios_updated.push_back(itr.first + ",");
-                    if (itr.second->shell_type() == data_struct::Electron_Shell::K_SHELL)
+                    if (itr.second->shell_type() == data_struct::Electron_Shell::K_Shell)
                     {
                         out_stream << "BRANCHING_RATIO_ADJUSTMENT_K: " << itr.first;
                     }

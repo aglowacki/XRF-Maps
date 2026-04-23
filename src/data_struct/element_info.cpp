@@ -49,6 +49,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #include "element_info.h"
 #include <cmath>
+#include "xraylib++.h"
 
 namespace data_struct
 {
@@ -62,7 +63,7 @@ Electron_Shell get_shell_by_name(std::string element_name)
     std::string shell_type = element_name.substr(idx);
     if (idx == 0) // if not found
     {
-        return data_struct::Electron_Shell::K_SHELL;
+        return data_struct::Electron_Shell::K_Shell;
     }
     else
     {
@@ -77,7 +78,7 @@ Electron_Shell get_shell_by_name(std::string element_name)
     }
 
 
-    return data_struct::Electron_Shell::K_SHELL;
+    return data_struct::Electron_Shell::K_Shell;
 }
 
 // ----------------------------------------------------------------------------
@@ -340,6 +341,9 @@ T_real Element_Info<T_real>::calc_beta(T_real density_val, T_real energy)
 template<typename T_real>
 T_real Element_Info<T_real>::get_f2(T_real energy)
 {
+    #ifdef __XRAYLIB__
+    return static_cast<T_real>(xrlpp::Fii(this->number, energy)); 
+    #else
     T_real f2 = 0.0;
    
     size_t low_e_idx = 0, high_e_idx = 0;
@@ -383,6 +387,7 @@ T_real Element_Info<T_real>::get_f2(T_real energy)
         logW<<"low_e_idx: "<<low_e_idx<<" or high_e_idx: "<<high_e_idx <<"is > than energies size: "<<energies->size()<<"\n";
     }
     return f2;
+    #endif
 }
 
 // ----------------------------------------------------------------------------

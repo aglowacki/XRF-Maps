@@ -10,3 +10,6 @@
 [submodule "src/support/MDA_Utilities"]
 	path = src/support/MDA_Utilities
 	url = https://github.com/BCDA-APS/MDA_Utilities.git
+[submodule "src/support/xraylib"]
+	path = src/support/xraylib
+	url = https://github.com/tschoonj/xraylib.git

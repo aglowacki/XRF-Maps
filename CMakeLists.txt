@@ -48,9 +48,6 @@ cmake_minimum_required(VERSION 3.20)
 
 project(XRF_Maps)
 
-#include(CTest)
-#enable_testing()
-
 set(VCPKG_TARGET_ARCHITECTURE x64)
 set(VCPKG_CRT_LINKAGE dynamic)
 
@@ -61,8 +58,9 @@ option(BUILD_WITH_TIRPC "Build tripc library for libxrpc (RedHat 8)" OFF)
 
 IF(UNIX)
   IF(BUILD_WITH_TIRPC)
-    set(GCC_INCLUDE_DIR "/usr/include/tirpc/" CACHE PATH "include folder for xrpc (red hat)") 
-    include_directories(${GCC_INCLUDE_DIR})
+    find_library(TIRPC_LIB tirpc ...)
+    #set(GCC_INCLUDE_DIR "/usr/include/tirpc/" CACHE PATH "include folder for xrpc (red hat)") 
+    #include_directories(${GCC_INCLUDE_DIR})
   ENDIF()
   set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake/linux)
 ENDIF()
@@ -81,12 +79,13 @@ option(BUILD_WITH_PYBIND11 "Build python binding with PyBind11" OFF)
 option(BUILD_WITH_ZMQ "Build with ZeroMQ" OFF)
 option(BUILD_WITH_QT "Build with QT" OFF)
 option(BUILD_STATIC "Static build libxrf_io and libxrf_fit" OFF)
+option(BUILD_WITH_XRAYLIB "Build with xraylib submodule" OFF)
 # If compiled on some intel mahcines this causes crashes so let user set it for compile
-option(AVX512 "Compule with arch AVX512 on MSVC" OFF)
-option(AVX2 "Compule with arch AVX2 on MSVC" OFF)
-option(AVX "Compule with arch AVX on MSVC" OFF)
-option(SSE2 "Compule with arch SSE2 on MSVC" OFF)
-option(MSVC_DEBUG_INFO_REL "Compule with debug info in Release build for MSVC" OFF)
+option(AVX512 "Compile with arch AVX512 on MSVC" OFF)
+option(AVX2 "Compile with arch AVX2 on MSVC" OFF)
+option(AVX "Compile with arch AVX on MSVC" OFF)
+option(SSE2 "Compile with arch SSE2 on MSVC" OFF)
+option(MSVC_DEBUG_INFO_REL "Compile with debug info in Release build for MSVC" OFF)
 
 # generate_git_hash_header.cmake
 # This script is run by add_custom_command to generate the header file.
@@ -166,7 +165,7 @@ IF (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU"
   IF (NOT APPLE)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
   ELSE()
-    set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -D__APPLE__")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__APPLE__")
   ENDIF()
   # Enable C++11 mode on C++ / Clang
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20 -D__Unix__  -fPIC -g")
@@ -221,6 +220,69 @@ include_directories(${EIGEN3_INCLUDES})
 
 # Include libxrf header files
 include_directories(src)
+
+IF(BUILD_WITH_XRAYLIB)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__XRAYLIB__")
+    find_program(MESON_EXECUTABLE meson REQUIRED)
+    find_program(NINJA_EXECUTABLE ninja REQUIRED)
+
+    include(ExternalProject)
+
+    set(XRAYLIB_SOURCE_DIR "${CMAKE_SOURCE_DIR}/src/support/xraylib")
+    set(XRAYLIB_INSTALL_DIR "${CMAKE_BINARY_DIR}/xraylib_install")
+
+    if(CMAKE_BUILD_TYPE MATCHES "^[Dd]ebug$")
+        set(XRAYLIB_BUILDTYPE debug)
+    else()
+        set(XRAYLIB_BUILDTYPE release)
+    endif()
+
+    if(APPLE)
+        set(XRAYLIB_LIB "${XRAYLIB_INSTALL_DIR}/lib/libxrl.dylib")
+    elseif(WIN32)
+        set(XRAYLIB_LIB "${XRAYLIB_INSTALL_DIR}/bin/xrl.dll")
+        set(XRAYLIB_IMPLIB "${XRAYLIB_INSTALL_DIR}/lib/xrl.lib")
+    else()
+        set(XRAYLIB_LIB "${XRAYLIB_INSTALL_DIR}/lib/libxrl.so")
+    endif()
+
+    ExternalProject_Add(xraylib_external
+        SOURCE_DIR      "${XRAYLIB_SOURCE_DIR}"
+        INSTALL_DIR     "${XRAYLIB_INSTALL_DIR}"
+        CONFIGURE_COMMAND
+            "${MESON_EXECUTABLE}" setup <BINARY_DIR> "${XRAYLIB_SOURCE_DIR}"
+            --prefix <INSTALL_DIR>
+            --libdir lib
+            --buildtype ${XRAYLIB_BUILDTYPE}
+            -Dpython-bindings=disabled
+            -Dpython-numpy-bindings=disabled
+            -Dfortran-bindings=disabled
+        BUILD_COMMAND
+            "${NINJA_EXECUTABLE}" -C <BINARY_DIR>
+        INSTALL_COMMAND
+            "${NINJA_EXECUTABLE}" -C <BINARY_DIR> install
+        BUILD_BYPRODUCTS "${XRAYLIB_LIB}"
+    )
+
+    file(MAKE_DIRECTORY "${XRAYLIB_INSTALL_DIR}/include/xraylib")
+
+    add_library(xraylib::xrl SHARED IMPORTED)
+    if(WIN32)
+        set_target_properties(xraylib::xrl PROPERTIES
+            IMPORTED_LOCATION   "${XRAYLIB_LIB}"
+            IMPORTED_IMPLIB     "${XRAYLIB_IMPLIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${XRAYLIB_INSTALL_DIR}/include/xraylib"
+        )
+    else()
+        set_target_properties(xraylib::xrl PROPERTIES
+            IMPORTED_LOCATION   "${XRAYLIB_LIB}"
+            INTERFACE_INCLUDE_DIRECTORIES "${XRAYLIB_INSTALL_DIR}/include/xraylib"
+        )
+    endif()
+
+    add_dependencies(xraylib::xrl xraylib_external)
+    add_definitions(-D_BUILD_WITH_XRAYLIB)
+ENDIF()
 
 IF (UNIX)
   # Include vcpkg installed dir (doesn't auto include it)
@@ -383,7 +445,7 @@ IF (BUILD_WITH_PYBIND11)
         IF (WIN32)
           target_link_libraries(pyxrfmaps PRIVATE libxrf_fit libxrf_io netCDF::netcdf hdf5::hdf5-shared)
       ELSEIF (UNIX)
-          target_link_libraries(pyxrfmaps PRIVATE libxrf_fit libxrf_io netCDF::netcdf libzmq-static)
+          target_link_libraries(pyxrfmaps PRIVATE libxrf_fit libxrf_io netCDF::netcdf)
       ENDIF()
     ENDIF()
 ENDIF()
@@ -433,7 +495,7 @@ endforeach()
 
 
 set_property(TARGET libxrf_io libxrf_fit APPEND PROPERTY INTERFACE_INCLUDE_DIRECTORIES
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/src/support/eigen-git-mirror> 
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src> 
   $<INSTALL_INTERFACE:src>  )
 
 install(TARGETS libxrf_io libxrf_fit EXPORT XRF_MapsConfig 
@@ -507,6 +569,9 @@ ELSEIF (UNIX)
 ENDIF()
 
 target_link_libraries(libxrf_fit PRIVATE NLopt::nlopt ${CMAKE_THREAD_LIBS_INIT} )
+IF(BUILD_WITH_XRAYLIB)
+    target_link_libraries(libxrf_fit PRIVATE xraylib::xrl)
+ENDIF()
 IF (WIN32)
   target_link_libraries(libxrf_io PRIVATE libxrf_fit netCDF::netcdf hdf5::hdf5-shared yaml-cpp::yaml-cpp JsonCpp::JsonCpp NLopt::nlopt ${CMAKE_THREAD_LIBS_INIT} )
   target_link_libraries (xrf_maps PRIVATE libxrf_io libxrf_fit netCDF::netcdf hdf5::hdf5-shared yaml-cpp::yaml-cpp JsonCpp::JsonCpp NLopt::nlopt ${CMAKE_THREAD_LIBS_INIT} )
@@ -516,20 +581,23 @@ ELSEIF (UNIX)
 ENDIF()
 
 IF (BUILD_WITH_QT)
-  target_link_libraries (libxrf_io LINK_PUBLIC ${Qt6Charts_LIBRARIES} )
-  target_link_libraries (xrf_maps LINK_PUBLIC ${Qt6Charts_LIBRARIES} )
+  target_link_libraries (libxrf_io PUBLIC ${Qt6Charts_LIBRARIES} )
+  target_link_libraries (xrf_maps PUBLIC ${Qt6Charts_LIBRARIES} )
 ENDIF()
 
 IF (BUILD_WITH_TIRPC)
-  link_directories(AFTER "/lib64" "/usr/lib")
-  target_link_libraries (libxrf_io LINK_PUBLIC libtirpc.so  )
-  target_link_libraries (xrf_maps LINK_PUBLIC libtirpc.so)
+  #This double comment needs to be tested on linux
+  ##link_directories(AFTER "/lib64" "/usr/lib")
+  ##target_link_libraries (libxrf_io PUBLIC libtirpc.so  )
+  ##target_link_libraries (xrf_maps PUBLIC libtirpc.so)
+  target_link_libraries (libxrf_io PUBLIC ${TIRPC_LIB})
+  target_link_libraries (xrf_maps PUBLIC ${TIRPC_LIB})
 ENDIF()
 
-IF (BUILD_WITH_OPENCL)
-    find_package(CLBlast CONFIG REQUIRED)
-    target_link_libraries(xrf_maps PRIVATE clblast)
-ENDIF()
+#IF (BUILD_WITH_OPENCL)
+#    find_package(CLBlast CONFIG REQUIRED)
+#    target_link_libraries(xrf_maps PRIVATE clblast)
+#ENDIF()
 
 install(TARGETS xrf_maps libxrf_io libxrf_fit 
         EXPORT xrfmaps-export

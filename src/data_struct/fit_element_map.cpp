@@ -76,7 +76,7 @@ Fit_Element_Map<T_real>::Fit_Element_Map(std::string name, Element_Info<T_real>*
     size_t idx = _full_name.find_last_of("_") + 1;
     if(idx == 0)
     {
-        _shell_type = Electron_Shell::K_SHELL;
+        _shell_type = Electron_Shell::K_Shell;
     }
     else
     {
@@ -91,12 +91,12 @@ Fit_Element_Map<T_real>::Fit_Element_Map(std::string name, Element_Info<T_real>*
         }
         else //default to K shell
         {
-            _shell_type = Electron_Shell::K_SHELL;
+            _shell_type = Electron_Shell::K_Shell;
         }
     }
 
 
-    if (_shell_type == Electron_Shell::K_SHELL) // K line
+    if (_shell_type == Electron_Shell::K_Shell) // K line
     {
         num_ratios = 4;
     }
@@ -174,7 +174,7 @@ void Fit_Element_Map<T_real>::init_energy_ratio_for_detector_element(const Eleme
 
     _energy_ratios.clear();
 
-    if (_shell_type == Electron_Shell::K_SHELL) // K line
+    if (_shell_type == Electron_Shell::K_Shell) // K line
     {
         if(_pileup_element_info != nullptr) // pileup's
         {
@@ -399,7 +399,7 @@ bool Fit_Element_Map<T_real>::check_binding_energy(T_real incident_energy, size_
 	{
         if( _pileup_element_info != nullptr)
         {
-            if (_shell_type == Electron_Shell::K_SHELL)
+            if (_shell_type == Electron_Shell::K_Shell)
             {
                 if (_center < incident_energy)
                 {
@@ -409,7 +409,7 @@ bool Fit_Element_Map<T_real>::check_binding_energy(T_real incident_energy, size_
         }
         else
         {
-            if (_shell_type == Electron_Shell::K_SHELL)
+            if (_shell_type == Electron_Shell::K_Shell)
             {
                 if (_element_info->bindingE["K"] < incident_energy)
                 {
@@ -475,7 +475,7 @@ std::unordered_map<std::string, T_real> Fit_Element_Map<T_real>::generate_roi_ce
     std::unordered_map<std::string, T_real> map;
     if (_element_info != nullptr)
     {
-        if (_shell_type == Electron_Shell::K_SHELL)
+        if (_shell_type == Electron_Shell::K_Shell)
         {
             map["ka2"] = _element_info->xrf["ka2"];
             map["kb1"] = _element_info->xrf["kb1"];

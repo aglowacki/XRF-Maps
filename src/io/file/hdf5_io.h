@@ -4954,9 +4954,9 @@ public:
                     count[i] = dims_in[i];
                 }
 
-                //detector->fitting_quant_map.at(fitting_routine).at(itr.first).at(data_struct::Electron_Shell::K_SHELL)
+                //detector->fitting_quant_map.at(fitting_routine).at(itr.first).at(data_struct::Electron_Shell::K_Shell)
 
-                //detector->fitting_quant_map.at(fitting_routine).at(itr.first][data_struct::Electron_Shell::K_SHELL].resize(count[1]);
+                //detector->fitting_quant_map.at(fitting_routine).at(itr.first][data_struct::Electron_Shell::K_Shell].resize(count[1]);
                 //detector->fitting_quant_map.at(fitting_routine).at(itr.first][data_struct::Electron_Shell::L_SHELL].resize(count[1]);
                 //detector->fitting_quant_map.at(fitting_routine)[itr.first][data_struct::Electron_Shell::M_SHELL].resize(count[1]);
                 // vector < Element_Quant<T_real>
@@ -7497,7 +7497,7 @@ public:
                         std::vector<T_real> calibration_curve;
                         std::vector<std::string> calibration_curve_labels;
 
-                        if (calib_itr.first == data_struct::Electron_Shell::K_SHELL)
+                        if (calib_itr.first == data_struct::Electron_Shell::K_Shell)
                         {
                             j = 0;
                         }

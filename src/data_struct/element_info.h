@@ -56,12 +56,13 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <vector>
 #include "core/defines.h"
 
+
 namespace data_struct
 {
 
-enum class Electron_Shell { K_SHELL, L_SHELL, M_SHELL, N_SHELL, O_SHELL, P_SHELL, Q_SHELL };
+enum class Electron_Shell { K_Shell=0, L_SHELL, M_SHELL, N_SHELL, O_SHELL, P_SHELL, Q_SHELL };
 
-inline const std::map<Electron_Shell, std::string> Shell_To_String = { {Electron_Shell::K_SHELL, "K"},
+inline const std::map<Electron_Shell, std::string> Shell_To_String = { {Electron_Shell::K_Shell, "K"},
                                                             {Electron_Shell::L_SHELL, "L"} ,
                                                             {Electron_Shell::M_SHELL, "M"} ,
                                                             {Electron_Shell::N_SHELL, "N"} ,

@@ -244,11 +244,11 @@ namespace csv
             file_stream << "\n\n";
 
             file_stream << "Element,Z,K Shell,L Shell,M Shell\n";
-            for (int i = 0; i < quants_map->curve_quant_map[data_struct::Electron_Shell::K_SHELL].size(); i++)
+            for (int i = 0; i < quants_map->curve_quant_map[data_struct::Electron_Shell::K_Shell].size(); i++)
             {
-                file_stream << quants_map->curve_quant_map[data_struct::Electron_Shell::K_SHELL][i].name << ","
+                file_stream << quants_map->curve_quant_map[data_struct::Electron_Shell::K_Shell][i].name << ","
                     << i + 1 << ","
-                    << quants_map->curve_quant_map[data_struct::Electron_Shell::K_SHELL][i].calib_curve_val << ","
+                    << quants_map->curve_quant_map[data_struct::Electron_Shell::K_Shell][i].calib_curve_val << ","
                     << quants_map->curve_quant_map[data_struct::Electron_Shell::L_SHELL][i].calib_curve_val << ","
                     << quants_map->curve_quant_map[data_struct::Electron_Shell::M_SHELL][i].calib_curve_val << "\n";
             }
@@ -424,7 +424,7 @@ namespace csv
                         {
                             //Quantification_Scaler_Struct
                             auto& quant_element = quant_struct.quant_scaler_map.at(n_itr.second);
-                            k_calib_curve = &(quant_element.curve_quant_map.at(data_struct::Electron_Shell::K_SHELL));
+                            k_calib_curve = &(quant_element.curve_quant_map.at(data_struct::Electron_Shell::K_Shell));
                             l_calib_curve = &(quant_element.curve_quant_map.at(data_struct::Electron_Shell::L_SHELL));
                             m_calib_curve = &(quant_element.curve_quant_map.at(data_struct::Electron_Shell::M_SHELL));
                         }
@@ -518,7 +518,7 @@ namespace csv
                                 if (element != nullptr)
                                 {
                                     int idx = element->number - 1;
-                                    if (shell == data_struct::Electron_Shell::K_SHELL && k_calib_curve != nullptr)
+                                    if (shell == data_struct::Electron_Shell::K_Shell && k_calib_curve != nullptr)
                                     {
                                         e_cal_val = k_calib_curve->at(idx).calib_curve_val;
                                     }
@@ -653,11 +653,11 @@ namespace csv
             file_stream << "\n\n";
 
             file_stream << "Element,Z,K Shell,L Shell,M Shell\n";
-            for (int i = 0; i < quants_map->curve_quant_map[data_struct::Electron_Shell::K_SHELL].size(); i++)
+            for (int i = 0; i < quants_map->curve_quant_map[data_struct::Electron_Shell::K_Shell].size(); i++)
             {
-                file_stream << quants_map->curve_quant_map[data_struct::Electron_Shell::K_SHELL][i].name << ","
+                file_stream << quants_map->curve_quant_map[data_struct::Electron_Shell::K_Shell][i].name << ","
                     << i + 1 << ","
-                    << quants_map->curve_quant_map[data_struct::Electron_Shell::K_SHELL][i].calib_curve_val << ","
+                    << quants_map->curve_quant_map[data_struct::Electron_Shell::K_Shell][i].calib_curve_val << ","
                     << quants_map->curve_quant_map[data_struct::Electron_Shell::L_SHELL][i].calib_curve_val << ","
                     << quants_map->curve_quant_map[data_struct::Electron_Shell::M_SHELL][i].calib_curve_val << "\n";
             }
