@@ -9193,41 +9193,78 @@ public:
         || params_override->branching_ratio_M.size() > 0
         || params_override->branching_family_L.size() > 0)
         {
-            // save branching ratio's 
+            // save branching ratio's
             if (false == _open_or_create_group(STR_BRANCHING_RATIOS, po_grp_id, br_grp_id))
             {
                 return false;
             }
+
+            // string types used to store each shell's raw branching ratio lines
+            hid_t br_filetype = H5Tcopy(H5T_FORTRAN_S1);
+            H5Tset_size(br_filetype, 256);
+            _global_close_map.push({ br_filetype, H5O_DATATYPE });
+            hid_t br_memtype = H5Tcopy(H5T_C_S1);
+            H5Tset_size(br_memtype, 256);
+            _global_close_map.push({ br_memtype, H5O_DATATYPE });
+
+            // saves a vector of branching ratio lines as a fixed length string dataset within the given group
+            auto save_branching = [&](hid_t grp_id, const std::vector<std::string>& ratios) -> void
+            {
+                hsize_t br_count[1] = { ratios.size() };
+                hid_t br_dset_id, br_space_id;
+                if (false == _open_h5_dataset(STR_BRANCHING_RATIOS, br_filetype, grp_id, 1, br_count, br_count, br_dset_id, br_space_id))
+                {
+                    logE << "Failed to open or create branching ratio dataset\n";
+                    return;
+                }
+
+                hsize_t br_offset[1] = { 0 };
+                hsize_t br_single[1] = { 1 };
+                for (size_t j = 0; j < ratios.size(); j++)
+                {
+                    br_offset[0] = j;
+                    char br_label[256] = { 0 };
+                    ratios[j].copy(&br_label[0], 255);
+
+                    herr_t st = H5Sselect_hyperslab(br_space_id, H5S_SELECT_SET, br_offset, nullptr, br_single, nullptr);
+                    st = H5Dwrite(br_dset_id, br_memtype, memoryspace_id, br_space_id, H5P_DEFAULT, (void*)&br_label);
+                    if (st < 0)
+                    {
+                        logE << "failed to write branching ratio\n";
+                    }
+                }
+            };
+
             if(params_override->branching_ratio_K.size() > 0)
             {
-                // save K ratios 
+                // save K ratios
                 if (_open_or_create_group(STR_K_SHELL, br_grp_id, k_grp_id))
                 {
-                    
+                    save_branching(k_grp_id, params_override->branching_ratio_K);
                 }
             }
             if(params_override->branching_ratio_L.size() > 0)
             {
-                // save l ratios 
+                // save l ratios
                 if (_open_or_create_group(STR_L_SHELL, br_grp_id, l_grp_id))
                 {
-                    
+                    save_branching(l_grp_id, params_override->branching_ratio_L);
                 }
             }
             if(params_override->branching_ratio_M.size() > 0)
             {
-                // save K Shells 
+                // save M ratios
                 if (_open_or_create_group(STR_M_SHELL, br_grp_id, m_grp_id))
                 {
-                    
+                    save_branching(m_grp_id, params_override->branching_ratio_M);
                 }
             }
             if(params_override->branching_family_L.size() > 0)
             {
-                // save K Shells 
+                // save L family ratios
                 if (_open_or_create_group(STR_L_FAMILY, br_grp_id, l_fam_grp_id))
                 {
-                    
+                    save_branching(l_fam_grp_id, params_override->branching_family_L);
                 }
             }
         }
