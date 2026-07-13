@@ -166,9 +166,12 @@ void generate_optimal_params(data_struct::Analysis_Job<double>* analysis_job)
             {
                 params_override = new data_struct::Params_Override<double>();
                 //load override parameters
-                if (false == io::file::load_override_params(analysis_job->output_dir, detector_num, *params_override))
+                // if the override txt file is missing, fall back to the overrides saved in the analyzed hdf5 file
+                std::string h5_fallback = analysis_job->output_dir + DIR_END_CHAR + "img.dat" + DIR_END_CHAR + itr + ".h5" + std::to_string(detector_num);
+                if (false == io::file::load_override_params(analysis_job->output_dir, detector_num, *params_override, true, true, h5_fallback))
                 {
-                    if (false == io::file::load_override_params(analysis_job->output_dir, -1, *params_override))
+                    std::string h5_fallback_avg = analysis_job->output_dir + DIR_END_CHAR + "img.dat" + DIR_END_CHAR + itr + ".h5";
+                    if (false == io::file::load_override_params(analysis_job->output_dir, -1, *params_override, true, true, h5_fallback_avg))
                     {
                         logE << "Loading maps_fit_parameters_override.txt\n";
                         delete params_override;

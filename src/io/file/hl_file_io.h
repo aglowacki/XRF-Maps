@@ -187,7 +187,8 @@ DLL_EXPORT bool load_override_params(std::string dataset_directory,
     int detector_num,
     data_struct::Params_Override<T_real> &params_override,
     bool append_file_name = true,
-    bool log_error_loading = true)
+    bool log_error_loading = true,
+    std::string hdf5_fallback_filename = "")
 {
     std::string det_num = "";
     std::string filename = dataset_directory;
@@ -202,13 +203,25 @@ DLL_EXPORT bool load_override_params(std::string dataset_directory,
 
     if (false == io::file::aps::load_parameters_override(filename, params_override))
     {
-        if(log_error_loading)
+        // The override txt file is missing. Fall back to reading the fit parameters and
+        // branching ratio's saved inside the analyzed hdf5 file (if one was provided).
+        bool loaded_from_h5 = false;
+        if (hdf5_fallback_filename.length() > 0)
         {
-            logE << "Loading fit param override file: " << filename << "\n";
+            logI << "Override txt missing, attempting to load overrides from hdf5: " << hdf5_fallback_filename << "\n";
+            loaded_from_h5 = io::file::HDF5_IO::inst()->load_params_override(hdf5_fallback_filename, &params_override);
         }
-        return false;
+
+        if (false == loaded_from_h5)
+        {
+            if(log_error_loading)
+            {
+                logE << "Loading fit param override file: " << filename << "\n";
+            }
+            return false;
+        }
     }
-    else
+
     {
         data_struct::Element_Info<T_real>* detector_element;
         if (params_override.detector_element.length() > 0)
