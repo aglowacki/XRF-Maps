@@ -478,20 +478,59 @@ bool perform_quantification(data_struct::Analysis_Job<double>* analysis_job, boo
                         Fit_Parameters<double> fit_params;
                         // min, and max values doen't matter because we are free fitting amplitude only
                         fit_params.add_parameter(Fit_Param<double>("quantifier", 0., 1.0e20,  reciprocal, .01, E_Bound_Type::LIMITED_LO_HI));
-                        optimizer->minimize_quantification(&fit_params, &detector->all_element_quants[fit_itr.first][quant_itr.first], &quantification_model);
+                        optimizer->minimize_quantification(&fit_params, &detector->K_element_quants[fit_itr.first][quant_itr.first], &quantification_model);
                         double val = fit_params["quantifier"].value;
 
                         if(false == std::isfinite(val))
                         {
-                            logW << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first <<"Quantifier Value = Inf. setting it to 0.\n";
+                            logW << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first <<"K Shell Quantifier Value = Inf. setting it to 0.\n";
                             val = 0;
                         }
                         else
                         {
-                            logI<< Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first <<" Quantifier Value Start = (1/"<<quant_itr.second<<") = "<<reciprocal<< " :: Optimized = "<<val<<"\n";
+                            logI<< Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first <<" K Shell Quantifier Value Start = (1/"<<quant_itr.second<<") = "<<reciprocal<< " :: Optimized = "<<val<<"\n";
                         }
 
-                        detector->update_calibration_curve(fit_itr.first, quant_itr.first, &quantification_model, val);
+                        detector->update_calibration_curve(fit_itr.first, quant_itr.first, &quantification_model, data_struct::Electron_Shell::K_SHELL, val);
+
+                        //
+                        if (detector->L_element_quants[fit_itr.first][quant_itr.first].size() > 0)
+                        {
+                            fit_params["quantifier"].value = reciprocal;
+                            optimizer->minimize_quantification(&fit_params, &detector->L_element_quants[fit_itr.first][quant_itr.first], &quantification_model);
+                            double val = fit_params["quantifier"].value;
+
+                            if (false == std::isfinite(val))
+                            {
+                                logW << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first << " L Shell Quantifier Value = Inf. setting it to 0.\n";
+                                val = 0;
+                            }
+                            else
+                            {
+                                logI << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first << " L Shell Quantifier Value Start = (1/" << quant_itr.second << ") = " << reciprocal << " :: Optimized = " << val << "\n";
+                            }
+
+                            detector->update_calibration_curve(fit_itr.first, quant_itr.first, &quantification_model, data_struct::Electron_Shell::L_SHELL, val);
+                        }
+                        //
+                        if (detector->M_element_quants[fit_itr.first][quant_itr.first].size() > 0)
+                        {
+                            fit_params["quantifier"].value = reciprocal;
+                            optimizer->minimize_quantification(&fit_params, &detector->M_element_quants[fit_itr.first][quant_itr.first], &quantification_model);
+                            double val = fit_params["quantifier"].value;
+
+                            if (false == std::isfinite(val))
+                            {
+                                logW << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first << "M Shell Quantifier Value = Inf. setting it to 0.\n";
+                                val = 0;
+                            }
+                            else
+                            {
+                                logI << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first << " M Shell Quantifier Value Start = (1/" << quant_itr.second << ") = " << reciprocal << " :: Optimized = " << val << "\n";
+                            }
+
+                            detector->update_calibration_curve(fit_itr.first, quant_itr.first, &quantification_model, data_struct::Electron_Shell::M_SHELL, val);
+                        }
                     }
                 }
 
