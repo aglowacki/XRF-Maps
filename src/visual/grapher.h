@@ -64,10 +64,16 @@ DLL_EXPORT void SavePlotSpectras(std::string path,
 
     QValueAxis* axisX = new QValueAxis();
     axisX->setTitleText("Energy (keV)");
-    axisX->setLabelFormat("%1.0f");
-    //axisX->setTickCount(series->count());
-    //axisX->setRange(0, 2048);
-    axisX->setTickCount(11);
+    axisX->setLabelFormat("%0.1f");
+    axisX->setTruncateLabels(false);
+    axisX->setTickAnchor(0.0);
+    axisX->setTickInterval(1.0);
+    axisX->setTickType(QValueAxis::TicksDynamic);
+    axisX->setTruncateLabels(false);
+    if(energy != nullptr)
+    {
+        axisX->setTickAnchor((*energy)[0]);
+    }
 
     QValueAxis* axisY = new QValueAxis();
     axisY->setTitleText("Counts");
