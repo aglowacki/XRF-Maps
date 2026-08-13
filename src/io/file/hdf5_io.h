@@ -7193,6 +7193,44 @@ public:
 
         if (detector != nullptr)
         {
+            std::map<Fitting_Routines, std::map<std::string, std::unordered_map<std::string, Element_Quant<T_real>*>>> all_elements;
+            for (auto& itr1 : detector->K_element_quants)
+            {
+                auto& middle_map_dest = all_elements[itr1.first];
+                for (auto& itr2 : itr1.second)
+                {
+                    auto& middle_map_dest2 = middle_map_dest[itr2.first];
+                    for (auto& itr3 : itr2.second)
+                    {
+                        middle_map_dest2[itr3.first] = itr3.second;
+                    }
+                }
+            }
+            for (auto& itr1 : detector->L_element_quants)
+            {
+                auto& middle_map_dest = all_elements[itr1.first];
+                for (auto& itr2 : itr1.second)
+                {
+                    auto& middle_map_dest2 = middle_map_dest[itr2.first];
+                    for (auto& itr3 : itr2.second)
+                    {
+                        middle_map_dest2[itr3.first] = itr3.second;
+                    }
+                }
+            }
+            for (auto& itr1 : detector->M_element_quants)
+            {
+                auto& middle_map_dest = all_elements[itr1.first];
+                for (auto& itr2 : itr1.second)
+                {
+                    auto& middle_map_dest2 = middle_map_dest[itr2.first];
+                    for (auto& itr3 : itr2.second)
+                    {
+                        middle_map_dest2[itr3.first] = itr3.second;
+                    }
+                }
+            }
+
             if (false == _open_or_create_group(STR_QUANTIFICATION, maps_grp_id, q_grp_id))
             {
                 return false;
@@ -7615,7 +7653,7 @@ public:
                     hid_t e_name_dataspace_id = -1;
                     hid_t e_prop_dataspace_id = -1;
 
-                    e_count[0] = detector->all_element_quants[qitr.first][quant_scaler_itr.first].size();
+                    e_count[0] = all_elements[qitr.first][quant_scaler_itr.first].size();
                     e_count[1] = 10; // all properties of Element_Quant except for name
                     p_count[0] = 10; // all properties of Element_Quant except for name
 
@@ -7630,7 +7668,7 @@ public:
                     {
                         int c = 0;
                         // proc_type          quant_scaler      element    quant_prop
-                        for (auto& element_itr : detector->all_element_quants[qitr.first][quant_scaler_itr.first])
+                        for (auto& element_itr : all_elements[qitr.first][quant_scaler_itr.first])
                         {
 
                             char label[50] = { 0 };

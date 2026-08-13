@@ -256,24 +256,31 @@ bool load_and_fit_quantification_datasets(data_struct::Analysis_Job<double>* ana
         std::unordered_map<std::string, data_struct::Fit_Element_Map<double>*> elements_to_fit;
         for (auto& itr : standard_itr.element_standard_weights)
         {
-            data_struct::Element_Info<double>* e_info = data_struct::Element_Info_Map<double>::inst()->get_element(itr.first);
-            if( e_info != nullptr )
+            if(detector->fit_params_override_dict.elements_to_fit.count(itr.first) > 0)
             {
-                elements_to_fit[itr.first] = new data_struct::Fit_Element_Map<double>(itr.first, e_info);
-                elements_to_fit[itr.first]->init_energy_ratio_for_detector_element(detector->detector_element, standard_itr.disable_Ka_for_quantification, standard_itr.disable_La_for_quantification);
-
-                if (element_amt_in_all_standards.contains(e_info->number))
-                {
-                    element_amt_in_all_standards[e_info->number] += 1.0;
-                }
-                else
-                {
-                    element_amt_in_all_standards[e_info->number] = 1.0;
-                }
+                elements_to_fit[itr.first] = detector->fit_params_override_dict.elements_to_fit.at(itr.first);
             }
             else
             {
-                logE<<"Could not find element: "<< itr.first <<"\n";
+                data_struct::Element_Info<double>* e_info = data_struct::Element_Info_Map<double>::inst()->get_element(itr.first);
+                if( e_info != nullptr )
+                {
+                    elements_to_fit[itr.first] = new data_struct::Fit_Element_Map<double>(itr.first, e_info);
+                    elements_to_fit[itr.first]->init_energy_ratio_for_detector_element(detector->detector_element, standard_itr.disable_Ka_for_quantification, standard_itr.disable_La_for_quantification);
+
+                    if (element_amt_in_all_standards.contains(e_info->number))
+                    {
+                        element_amt_in_all_standards[e_info->number] += 1.0;
+                    }
+                    else
+                    {
+                        element_amt_in_all_standards[e_info->number] = 1.0;
+                    }
+                }
+                else
+                {
+                    logE<<"Could not find element: "<< itr.first <<"\n";
+                }
             }
         }
 
@@ -366,6 +373,8 @@ bool load_and_fit_quantification_datasets(data_struct::Analysis_Job<double>* ana
         }
 
         energy_range = get_energy_range(quantification_standard->integrated_spectra.size(), &(override_params->fit_params));
+
+         analysis_job->init_fit_routines(quantification_standard->integrated_spectra.size(), nullptr, true);
         //First we integrate the spectra and get the elemental counts
         for (auto& fit_itr : detector->fit_routines)
         {
@@ -473,28 +482,68 @@ bool perform_quantification(data_struct::Analysis_Job<double>* analysis_job, boo
 
                 for(auto &fit_itr : detector->fit_routines)
                 {
-                fitting::optimizers::Optimizer<double>* optimizer = analysis_job->optimizer();
-                for (auto& quant_itr : detector->avg_quantification_scaler_map)
-                {      
-                        double reciprocal  = 1.0 / quant_itr.second;
+                    fitting::optimizers::Optimizer<double>* optimizer = analysis_job->optimizer();
+                    for (auto& quant_itr : detector->avg_quantification_scaler_map)
+                    {      
+                        //double reciprocal  = 1.0 / quant_itr.second;
+                        double reciprocal  = quant_itr.second;
 
                         Fit_Parameters<double> fit_params;
                         // min, and max values doen't matter because we are free fitting amplitude only
-                        fit_params.add_parameter(Fit_Param<double>("quantifier", 0., 1.0e20,  reciprocal, .01, E_Bound_Type::LIMITED_LO_HI));
-                        optimizer->minimize_quantification(&fit_params, &detector->all_element_quants[fit_itr.first][quant_itr.first], &quantification_model);
+                        fit_params.add_parameter(Fit_Param<double>("quantifier", 1.0e-10, 1.0e20,  reciprocal, .1, E_Bound_Type::LIMITED_LO_HI));
+                        optimizer->minimize_quantification(&fit_params, &detector->K_element_quants[fit_itr.first][quant_itr.first], &quantification_model);
                         double val = fit_params["quantifier"].value;
 
                         if(false == std::isfinite(val))
                         {
-                            logW << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first <<"Quantifier Value = Inf. setting it to 0.\n";
+                            logW << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first <<"K Shell Quantifier Value = Inf. setting it to 0.\n";
                             val = 0;
                         }
                         else
                         {
-                            logI<< Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first <<" Quantifier Value Start = (1/"<<quant_itr.second<<") = "<<reciprocal<< " :: Optimized = "<<val<<"\n";
+                            logI<< Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first <<" K Shell Quantifier Value Start = (1/"<<quant_itr.second<<") = "<<reciprocal<< " :: Optimized = "<<val<<"\n";
                         }
 
-                        detector->update_calibration_curve(fit_itr.first, quant_itr.first, &quantification_model, val);
+                        detector->update_calibration_curve(fit_itr.first, quant_itr.first, &quantification_model, data_struct::Electron_Shell::K_SHELL, val);
+
+                        //
+                        if (detector->L_element_quants[fit_itr.first][quant_itr.first].size() > 0)
+                        {
+                            fit_params["quantifier"].value = reciprocal;
+                            optimizer->minimize_quantification(&fit_params, &detector->L_element_quants[fit_itr.first][quant_itr.first], &quantification_model);
+                            double val = fit_params["quantifier"].value;
+
+                            if (false == std::isfinite(val))
+                            {
+                                logW << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first << " L Shell Quantifier Value = Inf. setting it to 0.\n";
+                                val = 0;
+                            }
+                            else
+                            {
+                                logI << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first << " L Shell Quantifier Value Start = (1/" << quant_itr.second << ") = " << reciprocal << " :: Optimized = " << val << "\n";
+                            }
+
+                            detector->update_calibration_curve(fit_itr.first, quant_itr.first, &quantification_model, data_struct::Electron_Shell::L_SHELL, val);
+                        }
+                        //
+                        if (detector->M_element_quants[fit_itr.first][quant_itr.first].size() > 0)
+                        {
+                            fit_params["quantifier"].value = reciprocal;
+                            optimizer->minimize_quantification(&fit_params, &detector->M_element_quants[fit_itr.first][quant_itr.first], &quantification_model);
+                            double val = fit_params["quantifier"].value;
+
+                            if (false == std::isfinite(val))
+                            {
+                                logW << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first << "M Shell Quantifier Value = Inf. setting it to 0.\n";
+                                val = 0;
+                            }
+                            else
+                            {
+                                logI << Fitting_Routine_To_Str.at(fit_itr.first) << " " << quant_itr.first << " M Shell Quantifier Value Start = (1/" << quant_itr.second << ") = " << reciprocal << " :: Optimized = " << val << "\n";
+                            }
+
+                            detector->update_calibration_curve(fit_itr.first, quant_itr.first, &quantification_model, data_struct::Electron_Shell::M_SHELL, val);
+                        }
                     }
                 }
 

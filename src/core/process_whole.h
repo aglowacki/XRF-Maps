@@ -360,10 +360,10 @@ DLL_EXPORT void proc_spectra(data_struct::Spectra_Volume<T_real>* spectra_volume
                 if (matrix_fit->energy_range().count() < int_spec.size())
                 {
                     int_spec = int_spec.sub_spectra(matrix_fit->energy_range().min, matrix_fit->energy_range().count());
-                    #ifdef _BUILD_WITH_QT
-                    visual::SavePlotSpectrasFromConsole(str_path, &ev, &int_spec, (&matrix_fit->fitted_integrated_spectra()), (&matrix_fit->fitted_integrated_background()), true);
-                    #endif
                 }
+                #ifdef _BUILD_WITH_QT
+                visual::SavePlotSpectrasFromConsole(str_path, &ev, &int_spec, (&matrix_fit->fitted_integrated_spectra()), (&matrix_fit->fitted_integrated_background()), true);
+                #endif
             }
 
         }
