@@ -267,20 +267,19 @@ bool load_and_fit_quantification_datasets(data_struct::Analysis_Job<double>* ana
                 {
                     elements_to_fit[itr.first] = new data_struct::Fit_Element_Map<double>(itr.first, e_info);
                     elements_to_fit[itr.first]->init_energy_ratio_for_detector_element(detector->detector_element, standard_itr.disable_Ka_for_quantification, standard_itr.disable_La_for_quantification);
-
-                    if (element_amt_in_all_standards.contains(e_info->number))
-                    {
-                        element_amt_in_all_standards[e_info->number] += 1.0;
-                    }
-                    else
-                    {
-                        element_amt_in_all_standards[e_info->number] = 1.0;
-                    }
                 }
                 else
                 {
                     logE<<"Could not find element: "<< itr.first <<"\n";
                 }
+            }
+            if (element_amt_in_all_standards.contains(elements_to_fit[itr.first]->Z()))
+            {
+                element_amt_in_all_standards[elements_to_fit[itr.first]->Z()] += 1.0;
+            }
+            else
+            {
+                element_amt_in_all_standards[elements_to_fit[itr.first]->Z()] = 1.0;
             }
         }
 
@@ -436,11 +435,6 @@ bool load_and_fit_quantification_datasets(data_struct::Analysis_Job<double>* ana
             detector->update_element_quants(fit_itr.first, STR_DS_IC, quantification_standard, &quantification_model, quantification_standard->DS_IC);
         }
 
-        //cleanup
-        for (auto& itr3 : elements_to_fit)
-        {
-            delete itr3.second;
-        }
         elements_to_fit.clear();
     }
 
