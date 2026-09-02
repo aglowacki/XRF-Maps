@@ -764,8 +764,25 @@ bool find_and_optimize_roi(data_struct::Analysis_Job<double>& analysis_job,
                 total_counts += itr.second.value;
             }
         }
-            
+        
+        if(out_fitp.contains(STR_RESIDUAL))
+        {
+            double free_pars = 0.0;
+            for(const auto& itr: out_fitp)
+            {
+                if(itr.second.bound_type != data_struct::E_Bound_Type::NOT_INIT && itr.second.bound_type != data_struct::E_Bound_Type::FIXED)
+                {
+                    free_pars += 1.0;
+                }
+            }
+            double chisq = out_fitp.at(STR_RESIDUAL).value;
+            double chisqred = chisq / (int_spectra.size() - free_pars);
 
+            out_fitp.add_parameter(data_struct::Fit_Param<double>("chisquare", chisq));
+            out_fitp.add_parameter(data_struct::Fit_Param<double>("chisqred", chisqred));
+            out_fitp.add_parameter(data_struct::Fit_Param<double>("free_pars", free_pars));
+
+        }
         double abs_err = std::abs(out_fitp.at(STR_RESIDUAL).value);
         double rel_err = abs_err / int_spectra.sum();
         double roi_area = 0;
