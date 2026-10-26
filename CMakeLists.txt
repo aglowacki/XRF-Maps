@@ -230,6 +230,8 @@ ENDIF()
 
 # Visual Studio specific include and source
 IF(MSVC)
+  set(CMAKE_CXX_STANDARD "20")
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
   set(XDR_HACK src/support/MDA_Utilities/src/xdr_hack.c src/support/MDA_Utilities/src/xdr_hack.h )
   include_directories(src/support/direct)
   add_compile_options(/bigobj)
