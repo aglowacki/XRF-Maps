@@ -59,10 +59,24 @@ namespace fitting
 namespace routines
 {
 
+// The routine binds exactly one GPU backend at compile time. _BUILD_WITH_METAL selects
+// the Apple Metal backend, _BUILD_WITH_CUDA the NVIDIA CUDA backend; the two are
+// mutually exclusive (enforced in CMake). With neither, every path falls through to the
+// inherited CPU solver. GPU_NNLS_BACKEND_TYPE names whichever backend is active so the
+// rest of the class is backend agnostic.
 namespace gpu
 {
 class Metal_NNLS_Backend;
+class Cuda_NNLS_Backend;
 }
+
+#if defined(_BUILD_WITH_METAL)
+#define _BUILD_WITH_GPU 1
+#define GPU_NNLS_BACKEND_TYPE gpu::Metal_NNLS_Backend
+#elif defined(_BUILD_WITH_CUDA)
+#define _BUILD_WITH_GPU 1
+#define GPU_NNLS_BACKEND_TYPE gpu::Cuda_NNLS_Backend
+#endif
 
 using namespace data_struct;
 
@@ -77,19 +91,25 @@ using namespace data_struct;
  * that go through Base_Fit_Routine::fit_spectra one spectrum at a time get the
  * inherited CPU solve, which is the faster choice at that granularity.
  *
+ * The device work is done by one of two interchangeable backends selected at compile
+ * time: Apple Metal (BUILD_WITH_METAL) or NVIDIA CUDA (BUILD_WITH_CUDA). Both implement
+ * the same batched normal-equations solver with the same numerics, so everything below
+ * holds for either device.
+ *
  * Two things differ numerically from the CPU routine, both documented at their
  * implementation:
  *
- *  - The device arithmetic is single precision, because the Metal Shading Language
- *    has no double type. T_real = double instances narrow on the way in and widen on
- *    the way out, so results agree with the CPU solver only to single precision.
+ *  - The device arithmetic is single precision (the Metal Shading Language has no double
+ *    type, and the CUDA backend matches it on purpose). T_real = double instances narrow
+ *    on the way in and widen on the way out, so results agree with the CPU solver only
+ *    to single precision.
  *
  *  - The solve runs on the normal equations with the fit matrix column scaled to unit
  *    norm, rather than on the fit matrix directly. Same minimiser, different path to
  *    it, so iteration counts and the last digits of the counts will not match the CPU
  *    routine exactly.
  *
- * When the GPU is unavailable, the build has no Metal support, or the problem is wider
+ * When the GPU is unavailable, the build has no GPU backend, or the problem is wider
  * than the device solver accepts, the routine reports supports_batch() == false and
  * every path falls through to the inherited CPU implementation. It is always safe to
  * select; it just stops being faster.
@@ -158,7 +178,13 @@ protected:
      */
     bool _setup_gpu();
 
-    gpu::Metal_NNLS_Backend* _backend;
+#ifdef _BUILD_WITH_GPU
+    GPU_NNLS_BACKEND_TYPE* _backend;
+#else
+    // No GPU backend compiled in; the field is kept so the class layout does not depend
+    // on the build option, but it stays null and is never dereferenced.
+    void* _backend;
+#endif
 
     bool _gpu_ready;
 

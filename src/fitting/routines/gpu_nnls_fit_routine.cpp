@@ -54,6 +54,18 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "fitting/routines/gpu/metal_nnls_backend.h"
 #endif
 
+#ifdef _BUILD_WITH_CUDA
+#include "fitting/routines/gpu/cuda_nnls_backend.h"
+#endif
+
+// The maximum component count is a property of whichever backend is active. Both
+// backends define the same value (64), kept in sync on purpose.
+#if defined(_BUILD_WITH_METAL)
+#define GPU_NNLS_MAX_COMPONENTS gpu::METAL_NNLS_MAX_COMPONENTS
+#elif defined(_BUILD_WITH_CUDA)
+#define GPU_NNLS_MAX_COMPONENTS gpu::CUDA_NNLS_MAX_COMPONENTS
+#endif
+
 namespace fitting
 {
 namespace routines
@@ -84,7 +96,7 @@ GPU_NNLS_Fit_Routine<T_real>::GPU_NNLS_Fit_Routine(size_t max_iter) : NNLS_Fit_R
 template<typename T_real>
 GPU_NNLS_Fit_Routine<T_real>::~GPU_NNLS_Fit_Routine()
 {
-#ifdef _BUILD_WITH_METAL
+#ifdef _BUILD_WITH_GPU
     delete _backend;
 #endif
     _backend = nullptr;
@@ -96,7 +108,7 @@ GPU_NNLS_Fit_Routine<T_real>::~GPU_NNLS_Fit_Routine()
 template<typename T_real>
 std::string GPU_NNLS_Fit_Routine<T_real>::gpu_device_name() const
 {
-#ifdef _BUILD_WITH_METAL
+#ifdef _BUILD_WITH_GPU
     if (_backend != nullptr)
     {
         return _backend->device_name();
@@ -110,7 +122,7 @@ std::string GPU_NNLS_Fit_Routine<T_real>::gpu_device_name() const
 template<typename T_real>
 int GPU_NNLS_Fit_Routine<T_real>::preferred_batch_size() const
 {
-#ifdef _BUILD_WITH_METAL
+#ifdef _BUILD_WITH_GPU
     if (_gpu_ready && _backend != nullptr)
     {
         int rec = _backend->recommended_batch_size();
@@ -127,7 +139,7 @@ bool GPU_NNLS_Fit_Routine<T_real>::_setup_gpu()
 {
     _gpu_ready = false;
 
-#ifdef _BUILD_WITH_METAL
+#ifdef _BUILD_WITH_GPU
 
     const int m = (int)this->_fitmatrix.rows();
     const int n = (int)this->_fitmatrix.cols();
@@ -138,22 +150,22 @@ bool GPU_NNLS_Fit_Routine<T_real>::_setup_gpu()
         return false;
     }
 
-    if (n > gpu::METAL_NNLS_MAX_COMPONENTS)
+    if (n > GPU_NNLS_MAX_COMPONENTS)
     {
         logW << "GPU NNLS: " << n << " components exceeds the device limit of "
-             << gpu::METAL_NNLS_MAX_COMPONENTS << ", using CPU solver\n";
+             << GPU_NNLS_MAX_COMPONENTS << ", using CPU solver\n";
         return false;
     }
 
-    if (false == gpu::Metal_NNLS_Backend::is_available())
+    if (false == GPU_NNLS_BACKEND_TYPE::is_available())
     {
-        logW << "GPU NNLS: no Metal device available, using CPU solver\n";
+        logW << "GPU NNLS: no GPU device available, using CPU solver\n";
         return false;
     }
 
     if (_backend == nullptr)
     {
-        _backend = new gpu::Metal_NNLS_Backend();
+        _backend = new GPU_NNLS_BACKEND_TYPE();
     }
 
     if (false == _backend->initialize())
@@ -164,7 +176,7 @@ bool GPU_NNLS_Fit_Routine<T_real>::_setup_gpu()
 
     // Hand the backend the fit matrix in double, column major, whatever T_real is.
     // The scaling and the Gram matrix are accumulated in double on the way in; see
-    // Metal_NNLS_Backend::set_fit_matrix.
+    // the active backend's set_fit_matrix.
     std::vector<double> host_a((size_t)m * (size_t)n);
     for (int j = 0; j < n; j++)
     {
@@ -187,7 +199,7 @@ bool GPU_NNLS_Fit_Routine<T_real>::_setup_gpu()
 
 #else
 
-    logI << "GPU NNLS: built without Metal support, using CPU solver\n";
+    logI << "GPU NNLS: built without GPU support, using CPU solver\n";
 
 #endif
 
@@ -250,7 +262,7 @@ void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_
         return;
     }
 
-#ifdef _BUILD_WITH_METAL
+#ifdef _BUILD_WITH_GPU
 
     const int m = this->_energy_range.count();
     const int n = (int)this->_fitmatrix.cols();
@@ -267,86 +279,228 @@ void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_
         custom_bkg = this->_custom_background->segment(this->_energy_range.min, this->_energy_range.count());
     }
 
-    // Device input: one background subtracted, clamped row per usable spectrum.
-    // Rows are packed, so keep a map back to the caller's indices.
+    // The full spectrum length (SNIP runs on the whole spectrum, not just the fit range).
+    // All spectra in a scan share a length; take it from the first usable one.
+    size_t full_len = 0;
+    for (size_t s = 0; s < n_in; s++)
+    {
+        if (spectra_batch[s] != nullptr && spectra_batch[s]->size() > 0)
+        {
+            full_len = (size_t)spectra_batch[s]->size();
+            break;
+        }
+    }
+
+    // The on-device SNIP path. It only applies to the SNIP-background case on the CUDA
+    // backend, when the full spectrum fits the kernel's shared-memory working set. It
+    // moves the expensive per-spectrum SNIP off the single host thread this routine runs
+    // on (the batch path has no thread pool), which is what makes the GPU routine faster
+    // than the CPU routine rather than slower. Every other case keeps the host loop below.
+    bool use_gpu_snip = false;
+#ifdef _BUILD_WITH_CUDA
+    use_gpu_snip = has_snip && full_len > 0 && _backend->snip_supported((int)full_len);
+#endif
+
+    // Rows are packed (null/empty spectra skipped), so keep a map back to caller indices.
     std::vector<size_t> row_to_src;
     row_to_src.reserve(n_in);
-    std::vector<float> host_b;
-    host_b.reserve(n_in * (size_t)m);
 
     ArrayTr<T_real> sum_background = ArrayTr<T_real>::Zero(m);
 
-    for (size_t s = 0; s < n_in; s++)
+    std::vector<float> host_x;
+    std::vector<int>   host_iters;
+    std::vector<float> host_npg;
+
+#ifdef _BUILD_WITH_CUDA
+    if (use_gpu_snip)
     {
-        const Spectra<T_real>* const spectra = spectra_batch[s];
-        if (spectra == nullptr || spectra->size() == 0)
+        // Compute the spectrum-independent SNIP inputs once, matching data_struct::
+        // snip_background (spectra.h) exactly so the device result tracks the CPU routine.
+        const T_real e_off  = fit_params.value(STR_ENERGY_OFFSET);
+        const T_real e_lin  = fit_params.value(STR_ENERGY_SLOPE);
+        const T_real e_quad = fit_params.value(STR_ENERGY_QUADRATIC);
+        const T_real width  = fit_params.value(STR_SNIP_WIDTH);
+
+        ArrayTr<T_real> energy = ArrayTr<T_real>::LinSpaced((Eigen::Index)full_len, 0, (T_real)(full_len - 1));
+        energy = e_off + (energy * e_lin) + (Eigen::pow(energy, (T_real)2.0) * e_quad);
+        ArrayTr<T_real> tmp = std::pow((e_off / (T_real)2.3548), (T_real)2.0) + energy * (T_real)3.58 * e_lin;
+        tmp = tmp.unaryExpr([](T_real r) { return r < 0.0 ? (T_real)0.0 : r; });
+        ArrayTr<T_real> current_width = (T_real)2.35 * Eigen::sqrt(tmp);
+        current_width = width * current_width / e_lin;   // in channels
+
+        const int lo_limit = std::max<int>((int)this->_energy_range.min, 0);
+        const int up_limit = std::min<int>((int)this->_energy_range.max, (int)full_len - 1);
+
+        // Fixed two "first snipping" passes, then the decaying while loop; the trip count
+        // is data independent, so compute it here once (mirrors the CPU while condition).
+        const int n_first_passes = 2;
+        int n_decay_passes = 0;
         {
-            continue;
+            T_real mx = current_width.maxCoeff();
+            while (mx >= (T_real)0.5)
+            {
+                n_decay_passes++;
+                mx = mx / (T_real)M_SQRT2;
+            }
         }
 
-        ArrayTr<T_real> background;
-        if (has_custom_bkg)
+        std::vector<float> base_width((size_t)full_len);
+        for (size_t k = 0; k < full_len; k++)
         {
-            background = custom_bkg;
-        }
-        else if (has_snip)
-        {
-            ArrayTr<T_real> bkg = snip_background<T_real>(spectra,
-                                                          fit_params.value(STR_ENERGY_OFFSET),
-                                                          fit_params.value(STR_ENERGY_SLOPE),
-                                                          fit_params.value(STR_ENERGY_QUADRATIC),
-                                                          fit_params.value(STR_SNIP_WIDTH),
-                                                          this->_energy_range.min,
-                                                          this->_energy_range.max);
-            background = bkg.segment(this->_energy_range.min, this->_energy_range.count());
-        }
-        else
-        {
-            background.setZero(m);
+            base_width[k] = (float)current_width[(Eigen::Index)k];
         }
 
-        ArrayTr<T_real> sub = spectra->segment(this->_energy_range.min, this->_energy_range.count());
-        sub -= background;
-        sub = sub.unaryExpr([](T_real v) { return v > 0.0 ? v : (T_real)0.0; });
-
-        sum_background += background;
-
-        for (int i = 0; i < m; i++)
-        {
-            host_b.push_back((float)sub[i]);
-        }
-        row_to_src.push_back(s);
-    }
-
-    const int n_rows = (int)row_to_src.size();
-    if (n_rows == 0)
-    {
-        return;
-    }
-
-    std::vector<float> host_x((size_t)n_rows * (size_t)n, 0.f);
-    std::vector<int>   host_iters((size_t)n_rows, 0);
-    std::vector<float> host_npg((size_t)n_rows, 0.f);
-
-    if (false == _backend->solve_batch(host_b.data(),
-                                       n_rows,
-                                       host_x.data(),
-                                       host_iters.data(),
-                                       host_npg.data(),
-                                       (int)this->_max_iter,
-                                       (float)1e-3))
-    {
-        logE << "GPU NNLS: " << _backend->last_error() << ", falling back to CPU for this batch\n";
+        // Pack the raw full spectra for every usable pixel.
+        std::vector<float> host_full;
+        host_full.reserve(n_in * full_len);
         for (size_t s = 0; s < n_in; s++)
         {
-            if (spectra_batch[s] == nullptr || spectra_batch[s]->size() == 0)
+            const Spectra<T_real>* const spectra = spectra_batch[s];
+            if (spectra == nullptr || spectra->size() == 0)
             {
                 continue;
             }
-            NNLS_Fit_Routine<T_real>::fit_spectra(model, spectra_batch[s], elements_to_fit, out_counts[s]);
+            for (size_t k = 0; k < full_len; k++)
+            {
+                host_full.push_back((float)(*spectra)[(Eigen::Index)k]);
+            }
+            row_to_src.push_back(s);
         }
-        return;
+
+        const int n_rows = (int)row_to_src.size();
+        if (n_rows == 0)
+        {
+            return;
+        }
+
+        host_x.assign((size_t)n_rows * (size_t)n, 0.f);
+        host_iters.assign((size_t)n_rows, 0);
+        host_npg.assign((size_t)n_rows, 0.f);
+        std::vector<float> host_bkg((size_t)n_rows * (size_t)m, 0.f);
+
+        if (false == _backend->solve_batch_snip(host_full.data(),
+                                                n_rows,
+                                                (int)full_len,
+                                                base_width.data(),
+                                                n_first_passes,
+                                                n_decay_passes,
+                                                lo_limit,
+                                                up_limit,
+                                                (int)this->_energy_range.min,
+                                                m,
+                                                host_x.data(),
+                                                host_bkg.data(),
+                                                host_iters.data(),
+                                                host_npg.data(),
+                                                (int)this->_max_iter,
+                                                (float)1e-3))
+        {
+            logE << "GPU NNLS: " << _backend->last_error() << ", falling back to CPU for this batch\n";
+            for (size_t s = 0; s < n_in; s++)
+            {
+                if (spectra_batch[s] == nullptr || spectra_batch[s]->size() == 0)
+                {
+                    continue;
+                }
+                NNLS_Fit_Routine<T_real>::fit_spectra(model, spectra_batch[s], elements_to_fit, out_counts[s]);
+            }
+            return;
+        }
+
+        // Accumulate the integrated background from the per-row backgrounds the device
+        // returned over the fit range.
+        for (int r = 0; r < n_rows; r++)
+        {
+            const float* const bkr = host_bkg.data() + (size_t)r * (size_t)m;
+            for (int i = 0; i < m; i++)
+            {
+                sum_background[i] += (T_real)bkr[i];
+            }
+        }
     }
+    else
+#endif
+    {
+        // Host preprocessing path: subtract the background per spectrum on the CPU, then
+        // run the fit-range-only device solve. Used for Metal, the custom-background and
+        // no-SNIP cases, and spectra too long for the SNIP kernel.
+        std::vector<float> host_b;
+        host_b.reserve(n_in * (size_t)m);
+
+        for (size_t s = 0; s < n_in; s++)
+        {
+            const Spectra<T_real>* const spectra = spectra_batch[s];
+            if (spectra == nullptr || spectra->size() == 0)
+            {
+                continue;
+            }
+
+            ArrayTr<T_real> background;
+            if (has_custom_bkg)
+            {
+                background = custom_bkg;
+            }
+            else if (has_snip)
+            {
+                ArrayTr<T_real> bkg = snip_background<T_real>(spectra,
+                                                              fit_params.value(STR_ENERGY_OFFSET),
+                                                              fit_params.value(STR_ENERGY_SLOPE),
+                                                              fit_params.value(STR_ENERGY_QUADRATIC),
+                                                              fit_params.value(STR_SNIP_WIDTH),
+                                                              this->_energy_range.min,
+                                                              this->_energy_range.max);
+                background = bkg.segment(this->_energy_range.min, this->_energy_range.count());
+            }
+            else
+            {
+                background.setZero(m);
+            }
+
+            ArrayTr<T_real> sub = spectra->segment(this->_energy_range.min, this->_energy_range.count());
+            sub -= background;
+            sub = sub.unaryExpr([](T_real v) { return v > 0.0 ? v : (T_real)0.0; });
+
+            sum_background += background;
+
+            for (int i = 0; i < m; i++)
+            {
+                host_b.push_back((float)sub[i]);
+            }
+            row_to_src.push_back(s);
+        }
+
+        const int n_rows = (int)row_to_src.size();
+        if (n_rows == 0)
+        {
+            return;
+        }
+
+        host_x.assign((size_t)n_rows * (size_t)n, 0.f);
+        host_iters.assign((size_t)n_rows, 0);
+        host_npg.assign((size_t)n_rows, 0.f);
+
+        if (false == _backend->solve_batch(host_b.data(),
+                                           n_rows,
+                                           host_x.data(),
+                                           host_iters.data(),
+                                           host_npg.data(),
+                                           (int)this->_max_iter,
+                                           (float)1e-3))
+        {
+            logE << "GPU NNLS: " << _backend->last_error() << ", falling back to CPU for this batch\n";
+            for (size_t s = 0; s < n_in; s++)
+            {
+                if (spectra_batch[s] == nullptr || spectra_batch[s]->size() == 0)
+                {
+                    continue;
+                }
+                NNLS_Fit_Routine<T_real>::fit_spectra(model, spectra_batch[s], elements_to_fit, out_counts[s]);
+            }
+            return;
+        }
+    }
+
+    const int n_rows = (int)row_to_src.size();
 
     // The integrated fitted spectrum is a sum over the batch of (background + A x),
     // and escape_peak is linear in the spectrum it is given, so the whole batch needs
