@@ -44,7 +44,7 @@
 #POSSIBILITY OF SUCH DAMAGE.
 
 
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.10)
 
 # CUDA backs the GPU_NNLS fit routine on NVIDIA hardware. The option is declared here,
 # ahead of project(), so CUDA can be listed as a project language when it is on. Enabling

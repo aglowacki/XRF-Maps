@@ -291,13 +291,14 @@ void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_
         }
     }
 
-    // The on-device SNIP path. It only applies to the SNIP-background case on the CUDA
-    // backend, when the full spectrum fits the kernel's shared-memory working set. It
-    // moves the expensive per-spectrum SNIP off the single host thread this routine runs
-    // on (the batch path has no thread pool), which is what makes the GPU routine faster
-    // than the CPU routine rather than slower. Every other case keeps the host loop below.
+    // The on-device SNIP path. Both backends implement it; it applies to the SNIP
+    // background case when the full spectrum fits the kernel's threadgroup/shared-memory
+    // working set. It moves the expensive per-spectrum SNIP off the single host thread
+    // this routine runs on (the batch path has no thread pool), which is what makes the
+    // GPU routine faster than the CPU routine rather than slower. Every other case keeps
+    // the host loop below.
     bool use_gpu_snip = false;
-#ifdef _BUILD_WITH_CUDA
+#ifdef _BUILD_WITH_GPU
     use_gpu_snip = has_snip && full_len > 0 && _backend->snip_supported((int)full_len);
 #endif
 
@@ -311,7 +312,7 @@ void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_
     std::vector<int>   host_iters;
     std::vector<float> host_npg;
 
-#ifdef _BUILD_WITH_CUDA
+#ifdef _BUILD_WITH_GPU
     if (use_gpu_snip)
     {
         // Compute the spectrum-independent SNIP inputs once, matching data_struct::
@@ -422,8 +423,8 @@ void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_
 #endif
     {
         // Host preprocessing path: subtract the background per spectrum on the CPU, then
-        // run the fit-range-only device solve. Used for Metal, the custom-background and
-        // no-SNIP cases, and spectra too long for the SNIP kernel.
+        // run the fit-range-only device solve. Used for the custom-background and no-SNIP
+        // cases, and for spectra too long for the SNIP kernel.
         std::vector<float> host_b;
         host_b.reserve(n_in * (size_t)m);
 

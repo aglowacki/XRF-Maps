@@ -70,6 +70,18 @@ namespace gpu
 const int METAL_NNLS_MAX_COMPONENTS = 64;
 
 /**
+ * @brief Largest full-spectrum length the on-device SNIP kernel accepts.
+ *
+ * The SNIP kernel keeps one full-length float working buffer in threadgroup memory. At
+ * this cap that is 4096 * 4 B = 16 KB, inside the 32 KB threadgroup allocation every
+ * Metal family guarantees. snip_supported also checks the device's actual
+ * maxThreadgroupMemoryLength, so a device that reports less than this still falls back
+ * cleanly. Spectra longer than the cap use the host SNIP path. Kept equal to
+ * CUDA_SNIP_MAX_CHANNELS so the two GPU backends accept the same problems.
+ */
+const int METAL_SNIP_MAX_CHANNELS = 4096;
+
+/**
  * @brief Batched non negative least squares solver running on Metal.
  *
  * All device arithmetic is single precision: the Metal Shading Language has no
@@ -151,6 +163,67 @@ public:
                      float* out_npg,
                      int max_iter,
                      float pgtol);
+
+    /**
+     * @brief snip_supported : True when solve_batch_snip can run for the given full
+     *                         spectrum length, i.e. the per-threadgroup SNIP working set
+     *                         fits in threadgroup memory. When false the caller must
+     *                         subtract the background on the host and use solve_batch.
+     */
+    bool snip_supported(int full_len) const;
+
+    /**
+     * @brief solve_batch_snip : The full GPU pipeline for the SNIP-background case.
+     *                           Computes the SNIP background, subtracts it over the fit
+     *                           range, clamps to >= 0, and solves the NNLS problem, all on
+     *                           the device. This exists to keep the expensive SNIP pass off
+     *                           the single host thread the batched routine runs on.
+     *
+     * The spectrum-independent SNIP inputs (the per-channel base width in channels, the
+     * limits, and the pass counts) are computed once on the host from the energy
+     * calibration and uploaded, exactly matching data_struct::snip_background so the
+     * device result tracks the CPU routine to single precision.
+     *
+     * @param full_spectra   : n_spectra x full_len, row major, the raw spectra (not yet
+     *                          background subtracted). SNIP runs on the whole spectrum.
+     * @param n_spectra      : number of spectra in this batch.
+     * @param full_len       : channels per spectrum (spectra->size()).
+     * @param base_width_chan: length full_len, current_width in channels after the
+     *                          width * fwhm / energy_linear conversion (spectra.h). The
+     *                          kernel scales this by (1/sqrt2)^pass for the decay passes.
+     * @param n_first_passes : fixed "first snipping" passes at full width (== 2).
+     * @param n_decay_passes : while-loop passes, host computed from the width schedule.
+     * @param lo_limit       : clamp lower bound for the snip indices (== max(xmin,0)).
+     * @param up_limit       : clamp upper bound (== min(xmax, full_len-1)).
+     * @param fit_min        : index into the full spectrum where the fit range starts
+     *                          (energy_range.min); the device slices [fit_min, fit_min+n_fit).
+     * @param n_fit          : fit-range channel count (== m used by set_fit_matrix).
+     * @param out_x          : n_spectra x n, row major, the solutions. Caller allocates.
+     * @param out_background : n_spectra x n_fit, row major, the SNIP background over the
+     *                          fit range, so the host can accumulate the integrated
+     *                          background. Caller allocates, may be null.
+     * @param out_num_iter   : per spectrum iteration count. Caller allocates, may be null.
+     * @param out_npg        : per spectrum projected gradient inf-norm. May be null.
+     * @param max_iter       : iteration cap, mirroring nsNNLS::nnls maxit.
+     * @param pgtol          : projected gradient tolerance.
+     * @return false on dispatch failure; last_error() explains.
+     */
+    bool solve_batch_snip(const float* const full_spectra,
+                          int n_spectra,
+                          int full_len,
+                          const float* const base_width_chan,
+                          int n_first_passes,
+                          int n_decay_passes,
+                          int lo_limit,
+                          int up_limit,
+                          int fit_min,
+                          int n_fit,
+                          float* out_x,
+                          float* out_background,
+                          int* out_num_iter,
+                          float* out_npg,
+                          int max_iter,
+                          float pgtol);
 
     /**
      * @brief recommended_batch_size : Spectra per dispatch that keeps the device busy

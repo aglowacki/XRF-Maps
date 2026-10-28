@@ -389,6 +389,143 @@ kernel void nnls_solve_batch(constant float*      G         [[buffer(0)]],
 }
 )METAL";
 
+/**
+ * The SNIP kernel, kept in its own source string because it is compiled with fast math
+ * DISABLED while METAL_NNLS_SOURCE is compiled with it enabled.
+ *
+ * Two reasons for the split. The expand step relies on isfinite() to reject the overflow
+ * the CPU routine also guards against, and fast math lets the compiler assume no Inf or
+ * NaN ever occurs, which permits folding that test away. And unlike the solver, which is
+ * iterative and convergence tested, this kernel is a straight-line port whose whole job
+ * is to reproduce data_struct::snip_background channel for channel, so relaxed transcendentals
+ * would cost accuracy against the CPU for no speed that matters: the kernel is dominated by
+ * the serial clipping sweep, not by the log/exp passes.
+ */
+static NSString* const METAL_SNIP_SOURCE = @R"METAL(
+#include <metal_stdlib>
+using namespace metal;
+
+// One threadgroup per spectrum. Computes the SNIP background over the full spectrum, then
+// writes the background-subtracted, clamped fit-range slice to OUTB (the solver's b) and
+// the fit-range background to OUT_BKG. This is a faithful float port of
+// data_struct::snip_background (spectra.h): a boxcar(5) convolution, a log-log compress,
+// n_first + n_decay clipping passes with the width schedule, then an exp-exp expand.
+//
+// The clipping recurrence updates the background in place while sweeping channels
+// ascending (background[k] depends on an already-updated lo_index < k), so it is
+// inherently sequential within a pass and is run by a single thread over one threadgroup
+// working buffer. The device parallelism is across the thousands of spectra in the batch
+// (one threadgroup each), not across channels within a spectrum.
+//
+// The working buffer holds full_len floats and is allocated by the host with
+// setThreadgroupMemoryLength; the host guarantees full_len <= METAL_SNIP_MAX_CHANNELS and
+// that the allocation fits the device before encoding.
+kernel void snip_background_kernel(device const float*  FULL            [[buffer(0)]],
+                                   device const float*  BASE_WIDTH      [[buffer(1)]],
+                                   constant int&        full_len        [[buffer(2)]],
+                                   constant int&        n_first_passes  [[buffer(3)]],
+                                   constant int&        n_decay_passes  [[buffer(4)]],
+                                   constant int&        lo_limit        [[buffer(5)]],
+                                   constant int&        up_limit        [[buffer(6)]],
+                                   constant int&        fit_min         [[buffer(7)]],
+                                   constant int&        n_fit           [[buffer(8)]],
+                                   device float*        OUTB            [[buffer(9)]],
+                                   device float*        OUT_BKG         [[buffer(10)]],
+                                   constant int&        has_bkg_out     [[buffer(11)]],
+                                   threadgroup float*   cur             [[threadgroup(0)]],
+                                   uint tgid   [[threadgroup_position_in_grid]],
+                                   uint tid    [[thread_position_in_threadgroup]],
+                                   uint tcount [[threads_per_threadgroup]])
+{
+    const uint s = tgid;
+    device const float* spec = FULL + (size_t)s * (size_t)full_len;
+
+    // ---- boxcar(5) convolution, matching convolve1d (spectra.h:310) -----------------
+    // convolve1d centers a length-5 boxcar: output channel k is the mean of the 5 input
+    // channels centered on k, and the first/last 2 channels are left zero (the valid
+    // region is [2, full_len-3]). Reproduce that exactly so the edges agree with the CPU.
+    for (uint k = tid; k < (uint)full_len; k += tcount)
+    {
+        float v = 0.0f;
+        if (k >= 2u && k + 2u < (uint)full_len)
+        {
+            v = (spec[k - 2] + spec[k - 1] + spec[k] + spec[k + 1] + spec[k + 2]) * 0.2f;
+        }
+        // log(log(x+1)+1)
+        cur[k] = log(log(v + 1.0f) + 1.0f);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    // ---- clipping passes ------------------------------------------------------------
+    // Pass p uses width[k] * (1/sqrt2)^(decay index). The first n_first_passes run at the
+    // base width (decay index 0); each subsequent pass divides the width by sqrt2, matching
+    // the CPU's two fixed passes followed by the while loop that halves current_width.
+    //
+    // The CPU sweep (spectra.h:401-433) updates background[k] IN PLACE while iterating k
+    // ascending, so background[k] reads a lo_index < k that was already lowered earlier in
+    // the same pass. That within-pass dependency is sequential by construction, so the
+    // sweep is done by a single thread per threadgroup (tid 0) over the shared buffer `cur`.
+    // The parallel parts (convolution above, expand below) still use the whole threadgroup;
+    // only this inherently serial recurrence is single threaded. One threadgroup still
+    // handles one spectrum, so the device parallelism is across the batch.
+    const float inv_sqrt2 = 0.70710678118654752440f;
+    const int total_passes = n_first_passes + n_decay_passes;
+
+    if (tid == 0)
+    {
+        for (int p = 0; p < total_passes; p++)
+        {
+            // decay index: 0 for the first passes, then 0,1,2,... over the decay passes.
+            const int decay_idx = (p < n_first_passes) ? 0 : (p - n_first_passes);
+            float scale = 1.0f;
+            for (int d = 0; d < decay_idx; d++)
+            {
+                scale *= inv_sqrt2;
+            }
+
+            for (int k = 0; k < full_len; k++)
+            {
+                float w = BASE_WIDTH[k] * scale;
+                // Reproduce the CPU index math (spectra.h:405-408), including its
+                // asymmetry: lo_index is clamped to [lo_limit, up_limit]; hi_index is only
+                // capped at up_limit (the lo_limit floor on line 407 is overwritten by 408).
+                int lo_index = (int)((float)k - w);
+                if (lo_index < lo_limit) lo_index = lo_limit;
+                if (lo_index > up_limit) lo_index = up_limit;
+                int hi_index = (int)((float)k + w);
+                if (hi_index > up_limit) hi_index = up_limit;
+                if (hi_index < 0) hi_index = 0;
+
+                float temp = (cur[lo_index] + cur[hi_index]) * 0.5f;
+                if (cur[k] > temp)
+                {
+                    cur[k] = temp;   // in place, exactly like the CPU
+                }
+            }
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    // ---- expand back: exp(exp(x)-1)-1, finite-guarded (spectra.h:435-436) ------------
+    // Then subtract from the raw spectrum over the fit range, clamp >= 0, and emit.
+    for (uint t = tid; t < (uint)n_fit; t += tcount)
+    {
+        const int k = fit_min + (int)t;
+        float bg = exp(exp(cur[k]) - 1.0f) - 1.0f;
+        if (!isfinite(bg)) bg = 0.0f;
+
+        float sub = spec[k] - bg;
+        if (sub < 0.0f) sub = 0.0f;
+
+        OUTB[(size_t)s * (size_t)n_fit + t] = sub;
+        if (has_bkg_out != 0)
+        {
+            OUT_BKG[(size_t)s * (size_t)n_fit + t] = bg;
+        }
+    }
+}
+)METAL";
+
 // ----------------------------------------------------------------------------
 
 struct Metal_NNLS_Backend::Impl
@@ -398,6 +535,7 @@ struct Metal_NNLS_Backend::Impl
     id<MTLComputePipelineState> pipe_rhs        = nil;
     id<MTLComputePipelineState> pipe_bnorm2     = nil;
     id<MTLComputePipelineState> pipe_solve      = nil;
+    id<MTLComputePipelineState> pipe_snip       = nil;
 
     // Per fit matrix, rebuilt by set_fit_matrix.
     id<MTLBuffer> buf_A       = nil;    // m x n, column major, columns unit norm
@@ -412,9 +550,23 @@ struct Metal_NNLS_Backend::Impl
     id<MTLBuffer> buf_iters   = nil;
     id<MTLBuffer> buf_npg     = nil;
 
+    // For the on-device SNIP path, grown on demand alongside the per batch buffers.
+    id<MTLBuffer> buf_full    = nil;    // n_spectra x full_len, raw spectra
+    id<MTLBuffer> buf_bkg     = nil;    // n_spectra x n_fit, returned background
+    id<MTLBuffer> buf_width   = nil;    // full_len, base width in channels
+
     int batch_capacity = 0;
+    int full_capacity  = 0;             // n_spectra the buf_full / buf_bkg buffers hold
+    int full_len_cap   = 0;             // full_len the buf_full / buf_width buffers were sized for
+    int fit_len_cap    = 0;             // n_fit the buf_bkg buffer was sized for
 
     int tg_threads = TG_THREADS;
+
+    int snip_tg_threads = TG_THREADS;
+
+    // Bytes of threadgroup memory the device allows one kernel, from
+    // maxThreadgroupMemoryLength. Caps the full spectrum length the SNIP kernel accepts.
+    int max_tg_memory = 0;
 
     /**
      * Grow the per batch buffers to hold n_spectra. Shared storage mode keeps them
@@ -441,6 +593,35 @@ struct Metal_NNLS_Backend::Impl
             return false;
         }
         batch_capacity = n_spectra;
+        return true;
+    }
+
+    /**
+     * Grow the SNIP staging buffers (raw full spectra in, fit-range background out) to
+     * hold n_spectra at the given dimensions, reusing them across calls.
+     */
+    bool ensure_snip_capacity(int n_spectra, int full_len, int n_fit)
+    {
+        if (n_spectra <= full_capacity && full_len <= full_len_cap && n_fit <= fit_len_cap
+            && buf_full != nil && buf_bkg != nil && buf_width != nil)
+        {
+            return true;
+        }
+        const MTLResourceOptions opts = MTLResourceStorageModeShared;
+        buf_full  = [device newBufferWithLength:sizeof(float) * (size_t)n_spectra * (size_t)full_len options:opts];
+        buf_bkg   = [device newBufferWithLength:sizeof(float) * (size_t)n_spectra * (size_t)n_fit options:opts];
+        buf_width = [device newBufferWithLength:sizeof(float) * (size_t)full_len options:opts];
+
+        if (buf_full == nil || buf_bkg == nil || buf_width == nil)
+        {
+            full_capacity = 0;
+            full_len_cap  = 0;
+            fit_len_cap   = 0;
+            return false;
+        }
+        full_capacity = n_spectra;
+        full_len_cap  = full_len;
+        fit_len_cap   = n_fit;
         return true;
     }
 };
@@ -519,24 +700,32 @@ bool Metal_NNLS_Backend::initialize()
             return false;
         }
 
-        struct { const char* name; __strong id<MTLComputePipelineState>* dest; } kernels[] = {
-            { "nnls_project_rhs", &impl->pipe_rhs },
-            { "nnls_bnorm2",      &impl->pipe_bnorm2 },
-            { "nnls_solve_batch", &impl->pipe_solve },
+        // The SNIP kernel is built from its own library with fast math off; see
+        // METAL_SNIP_SOURCE for why. A failure here is not fatal: the routine simply
+        // keeps doing SNIP on the host and calling solve_batch.
+        MTLCompileOptions* snip_opts = [[MTLCompileOptions alloc] init];
+        [snip_opts setFastMathEnabled:NO];
+        id<MTLLibrary> snip_lib = [impl->device newLibraryWithSource:METAL_SNIP_SOURCE
+                                                             options:snip_opts
+                                                               error:nil];
+
+        struct { const char* name; __strong id<MTLComputePipelineState>* dest; id<MTLLibrary> lib; bool required; } kernels[] = {
+            { "nnls_project_rhs",      &impl->pipe_rhs,    lib,      true },
+            { "nnls_bnorm2",           &impl->pipe_bnorm2, lib,      true },
+            { "nnls_solve_batch",      &impl->pipe_solve,  lib,      true },
+            { "snip_background_kernel", &impl->pipe_snip,  snip_lib, false },
         };
 
         for (auto& k : kernels)
         {
-            id<MTLFunction> fn = [lib newFunctionWithName:[NSString stringWithUTF8String:k.name]];
-            if (fn == nil)
+            id<MTLFunction> fn = (k.lib == nil) ? nil
+                                 : [k.lib newFunctionWithName:[NSString stringWithUTF8String:k.name]];
+            if (fn != nil)
             {
-                _last_error = std::string("Metal kernel not found: ") + k.name;
-                delete impl;
-                return false;
+                err = nil;
+                *k.dest = [impl->device newComputePipelineStateWithFunction:fn error:&err];
             }
-            err = nil;
-            *k.dest = [impl->device newComputePipelineStateWithFunction:fn error:&err];
-            if (*k.dest == nil)
+            if (*k.dest == nil && k.required)
             {
                 _last_error = std::string("Could not build pipeline for ") + k.name;
                 if (err != nil)
@@ -558,6 +747,20 @@ bool Metal_NNLS_Backend::initialize()
             threads >>= 1;
         }
         impl->tg_threads = threads;
+
+        // The SNIP kernel does no reductions, so it only needs a count its own pipeline
+        // accepts; it still gets the same target so the two dispatches look alike.
+        if (impl->pipe_snip != nil)
+        {
+            int snip_max = (int)[impl->pipe_snip maxTotalThreadsPerThreadgroup];
+            int snip_threads = TG_THREADS;
+            while (snip_threads > snip_max && snip_threads > 1)
+            {
+                snip_threads >>= 1;
+            }
+            impl->snip_tg_threads = snip_threads;
+            impl->max_tg_memory = (int)[impl->device maxThreadgroupMemoryLength];
+        }
 
         _impl = impl;
     }
@@ -765,6 +968,196 @@ bool Metal_NNLS_Backend::solve_batch(const float* const spectra_batch,
         }
 
         std::memcpy(out_x, [_impl->buf_X contents], sizeof(float) * (size_t)n_spectra * (size_t)n);
+        if (out_num_iter != nullptr)
+        {
+            std::memcpy(out_num_iter, [_impl->buf_iters contents], sizeof(int) * (size_t)n_spectra);
+        }
+        if (out_npg != nullptr)
+        {
+            std::memcpy(out_npg, [_impl->buf_npg contents], sizeof(float) * (size_t)n_spectra);
+        }
+    }
+
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+
+bool Metal_NNLS_Backend::snip_supported(int full_len) const
+{
+    if (_impl == nullptr || _impl->pipe_snip == nil)
+    {
+        return false;
+    }
+    if (full_len <= 0 || full_len > METAL_SNIP_MAX_CHANNELS)
+    {
+        return false;
+    }
+    // The kernel keeps one full-length float working buffer in threadgroup memory.
+    return (int)(sizeof(float) * (size_t)full_len) <= _impl->max_tg_memory;
+}
+
+// ----------------------------------------------------------------------------
+
+bool Metal_NNLS_Backend::solve_batch_snip(const float* const full_spectra,
+                                          int n_spectra,
+                                          int full_len,
+                                          const float* const base_width_chan,
+                                          int n_first_passes,
+                                          int n_decay_passes,
+                                          int lo_limit,
+                                          int up_limit,
+                                          int fit_min,
+                                          int n_fit,
+                                          float* out_x,
+                                          float* out_background,
+                                          int* out_num_iter,
+                                          float* out_npg,
+                                          int max_iter,
+                                          float pgtol)
+{
+    if (_impl == nullptr)
+    {
+        _last_error = "solve_batch_snip called before initialize";
+        return false;
+    }
+    if (_impl->buf_A == nil)
+    {
+        _last_error = "solve_batch_snip called before set_fit_matrix";
+        return false;
+    }
+    if (n_spectra <= 0)
+    {
+        return true;
+    }
+    if (false == snip_supported(full_len))
+    {
+        _last_error = "Full spectrum length exceeds the Metal SNIP threadgroup-memory limit";
+        return false;
+    }
+    if (n_fit != _m)
+    {
+        _last_error = "solve_batch_snip n_fit does not match the fit matrix rows";
+        return false;
+    }
+    if (fit_min < 0 || fit_min + n_fit > full_len)
+    {
+        _last_error = "solve_batch_snip fit range lies outside the full spectrum";
+        return false;
+    }
+
+    const int m = _m;   // == n_fit
+    const int n = _n;
+
+    // Mirror the CPU solver's convergence controls so the two behave alike.
+    const int   mcheck = 100;
+    const float sigma  = 0.01f;
+    const float decay  = 0.9f;
+
+    const int has_bkg_out = (out_background != nullptr) ? 1 : 0;
+
+    @autoreleasepool
+    {
+        if (false == _impl->ensure_batch_capacity(n_spectra, m, n))
+        {
+            _last_error = "Could not allocate Metal batch buffers";
+            return false;
+        }
+        if (false == _impl->ensure_snip_capacity(n_spectra, full_len, n_fit))
+        {
+            _last_error = "Could not allocate Metal SNIP buffers";
+            return false;
+        }
+
+        // Unified memory, so these land where the GPU reads them with no staging copy.
+        // The width is tiny and constant across the run; re-writing it per batch keeps
+        // the API stateless.
+        std::memcpy([_impl->buf_full contents], full_spectra,
+                    sizeof(float) * (size_t)n_spectra * (size_t)full_len);
+        std::memcpy([_impl->buf_width contents], base_width_chan,
+                    sizeof(float) * (size_t)full_len);
+
+        id<MTLCommandBuffer> cmd = [_impl->queue commandBuffer];
+        id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+
+        // SNIP background + subtract + clamp, one threadgroup per spectrum. The kernel
+        // writes the fit-range solver input into buf_B and the fit-range background into
+        // buf_bkg. Threadgroup allocations are rounded up to 16 bytes.
+        {
+            const NSUInteger tg_mem = ((sizeof(float) * (size_t)full_len) + 15u) & ~((size_t)15u);
+            [enc setComputePipelineState:_impl->pipe_snip];
+            [enc setBuffer:_impl->buf_full  offset:0 atIndex:0];
+            [enc setBuffer:_impl->buf_width offset:0 atIndex:1];
+            [enc setBytes:&full_len       length:sizeof(int) atIndex:2];
+            [enc setBytes:&n_first_passes length:sizeof(int) atIndex:3];
+            [enc setBytes:&n_decay_passes length:sizeof(int) atIndex:4];
+            [enc setBytes:&lo_limit       length:sizeof(int) atIndex:5];
+            [enc setBytes:&up_limit       length:sizeof(int) atIndex:6];
+            [enc setBytes:&fit_min        length:sizeof(int) atIndex:7];
+            [enc setBytes:&n_fit          length:sizeof(int) atIndex:8];
+            [enc setBuffer:_impl->buf_B   offset:0 atIndex:9];
+            [enc setBuffer:_impl->buf_bkg offset:0 atIndex:10];
+            [enc setBytes:&has_bkg_out    length:sizeof(int) atIndex:11];
+            [enc setThreadgroupMemoryLength:tg_mem atIndex:0];
+            [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)n_spectra, 1, 1)
+                  threadsPerThreadgroup:MTLSizeMake((NSUInteger)_impl->snip_tg_threads, 1, 1)];
+        }
+
+        // c = Ascaled^T b
+        [enc setComputePipelineState:_impl->pipe_rhs];
+        [enc setBuffer:_impl->buf_A offset:0 atIndex:0];
+        [enc setBuffer:_impl->buf_B offset:0 atIndex:1];
+        [enc setBuffer:_impl->buf_C offset:0 atIndex:2];
+        [enc setBytes:&m         length:sizeof(int) atIndex:3];
+        [enc setBytes:&n         length:sizeof(int) atIndex:4];
+        [enc setBytes:&n_spectra length:sizeof(int) atIndex:5];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n, (NSUInteger)n_spectra, 1)
+              threadsPerThreadgroup:MTLSizeMake((NSUInteger)((n < 8) ? n : 8), 8, 1)];
+
+        // ||b||^2
+        [enc setComputePipelineState:_impl->pipe_bnorm2];
+        [enc setBuffer:_impl->buf_B      offset:0 atIndex:0];
+        [enc setBuffer:_impl->buf_bnorm2 offset:0 atIndex:1];
+        [enc setBytes:&m         length:sizeof(int) atIndex:2];
+        [enc setBytes:&n_spectra length:sizeof(int) atIndex:3];
+        [enc dispatchThreads:MTLSizeMake((NSUInteger)n_spectra, 1, 1)
+              threadsPerThreadgroup:MTLSizeMake(64, 1, 1)];
+
+        // The solve, one threadgroup per spectrum.
+        [enc setComputePipelineState:_impl->pipe_solve];
+        [enc setBuffer:_impl->buf_G       offset:0 atIndex:0];
+        [enc setBuffer:_impl->buf_C       offset:0 atIndex:1];
+        [enc setBuffer:_impl->buf_bnorm2  offset:0 atIndex:2];
+        [enc setBuffer:_impl->buf_colnorm offset:0 atIndex:3];
+        [enc setBuffer:_impl->buf_X       offset:0 atIndex:4];
+        [enc setBuffer:_impl->buf_iters   offset:0 atIndex:5];
+        [enc setBuffer:_impl->buf_npg     offset:0 atIndex:6];
+        [enc setBytes:&n        length:sizeof(int)   atIndex:7];
+        [enc setBytes:&max_iter length:sizeof(int)   atIndex:8];
+        [enc setBytes:&pgtol    length:sizeof(float) atIndex:9];
+        [enc setBytes:&mcheck   length:sizeof(int)   atIndex:10];
+        [enc setBytes:&sigma    length:sizeof(float) atIndex:11];
+        [enc setBytes:&decay    length:sizeof(float) atIndex:12];
+        [enc dispatchThreadgroups:MTLSizeMake((NSUInteger)n_spectra, 1, 1)
+              threadsPerThreadgroup:MTLSizeMake((NSUInteger)_impl->tg_threads, 1, 1)];
+
+        [enc endEncoding];
+        [cmd commit];
+        [cmd waitUntilCompleted];
+
+        if ([cmd error] != nil)
+        {
+            _last_error = std::string("Metal dispatch failed: ") +
+                          std::string([[[cmd error] localizedDescription] UTF8String]);
+            return false;
+        }
+
+        std::memcpy(out_x, [_impl->buf_X contents], sizeof(float) * (size_t)n_spectra * (size_t)n);
+        if (out_background != nullptr)
+        {
+            std::memcpy(out_background, [_impl->buf_bkg contents],
+                        sizeof(float) * (size_t)n_spectra * (size_t)n_fit);
+        }
         if (out_num_iter != nullptr)
         {
             std::memcpy(out_num_iter, [_impl->buf_iters contents], sizeof(int) * (size_t)n_spectra);
