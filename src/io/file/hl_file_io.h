@@ -85,6 +85,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "fitting/routines/roi_fit_routine.h"
 #include "fitting/routines/svd_fit_routine.h"
 #include "fitting/routines/nnls_fit_routine.h"
+#include "fitting/routines/gpu_nnls_fit_routine.h"
 
 #include "fitting/models/gaussian_model.h"
 
@@ -173,6 +174,9 @@ DLL_EXPORT fitting::routines::Base_Fit_Routine<T_real>* generate_fit_routine(dat
         break;
     case data_struct::Fitting_Routines::NNLS:
         fit_routine = new fitting::routines::NNLS_Fit_Routine<T_real>();
+        break;
+    case data_struct::Fitting_Routines::GPU_NNLS:
+        fit_routine = new fitting::routines::GPU_NNLS_Fit_Routine<T_real>();
         break;
     default:
         break;

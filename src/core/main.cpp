@@ -315,6 +315,10 @@ void set_fit_routines(Command_Line_Parser& clp, data_struct::Analysis_Job<T_real
                 {
                     analysis_job.fitting_routines.push_back(data_struct::Fitting_Routines::NNLS);
                 }
+                else if (item == STR_FIT_GPU_NNLS)
+                {
+                    analysis_job.fitting_routines.push_back(data_struct::Fitting_Routines::GPU_NNLS);
+                }
                 else if (item == STR_FIT_GAUSS_MATRIX || item == "MATRIX")
                 {
                     analysis_job.fitting_routines.push_back(data_struct::Fitting_Routines::GAUSS_MATRIX);
@@ -339,6 +343,10 @@ void set_fit_routines(Command_Line_Parser& clp, data_struct::Analysis_Job<T_real
             else if (fitting == STR_FIT_NNLS)
             {
                 analysis_job.fitting_routines.push_back(data_struct::Fitting_Routines::NNLS);
+            }
+            else if (fitting == STR_FIT_GPU_NNLS)
+            {
+                analysis_job.fitting_routines.push_back(data_struct::Fitting_Routines::GPU_NNLS);
             }
             else if (fitting == STR_FIT_GAUSS_MATRIX || fitting == "MATRIX")
             {

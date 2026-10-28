@@ -75,8 +75,11 @@ find_package(jsoncpp CONFIG REQUIRED)
 find_package(NLopt CONFIG REQUIRED)
 
 set(EIGEN3_INCLUDES "${PROJECT_SOURCE_DIR}/src/support/eigen-git-mirror" CACHE PATH "Eigen include folder")
-# todo 
+# todo
 # option(BUILD_WITH_OPENCL "Build with OPENCL support" OFF)
+# Metal backs the GPU_NNLS fit routine. Apple only; everywhere else the routine
+# compiles but reports no GPU and falls back to the CPU NNLS solver.
+option(BUILD_WITH_METAL "Build the GPU_NNLS fit routine with Metal compute (Apple only)" OFF)
 option(BUILD_WITH_PYBIND11 "Build python binding with PyBind11" OFF)
 option(BUILD_WITH_ZMQ "Build with ZeroMQ" OFF)
 option(BUILD_WITH_QT "Build with QT" OFF)
@@ -264,6 +267,8 @@ set(libxrf_fit_HEADERS
     src/fitting/routines/roi_fit_routine.h
     src/fitting/routines/svd_fit_routine.h
     src/fitting/routines/nnls_fit_routine.h
+    src/fitting/routines/gpu_nnls_fit_routine.h
+    src/fitting/routines/gpu/metal_nnls_backend.h
     src/fitting/routines/hybrid_param_nnls_fit_routine.h
     src/fitting/optimizers/optimizer.h
     src/fitting/optimizers/nlopt_optimizer.h
@@ -289,12 +294,27 @@ set(libxrf_fit_SOURCE
     src/fitting/routines/roi_fit_routine.cpp
     src/fitting/routines/svd_fit_routine.cpp
     src/fitting/routines/nnls_fit_routine.cpp
+    src/fitting/routines/gpu_nnls_fit_routine.cpp
     src/fitting/routines/hybrid_param_nnls_fit_routine.cpp
     src/fitting/optimizers/optimizer.cpp
     src/fitting/optimizers/nlopt_optimizer.cpp
     src/data_struct/detector.cpp
     src/data_struct/analysis_job.cpp
 )
+
+IF (BUILD_WITH_METAL)
+  IF (NOT APPLE)
+    message(FATAL_ERROR "BUILD_WITH_METAL requires an Apple platform")
+  ENDIF()
+  find_library(METAL_FRAMEWORK Metal REQUIRED)
+  find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+  # The Metal backend is the only Objective-C++ in the tree. It is compiled with ARC so
+  # the device, queue and buffer objects it holds are released with the backend.
+  set_source_files_properties(src/fitting/routines/gpu/metal_nnls_backend.mm
+                              PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  list(APPEND libxrf_fit_SOURCE src/fitting/routines/gpu/metal_nnls_backend.mm)
+  add_definitions(-D_BUILD_WITH_METAL)
+ENDIF()
 
 #--------------- start xrf io lib -----------------
 set(XRF_IO_HEADERS
@@ -395,6 +415,10 @@ add_executable(xrf_maps
     src/core/command_line_parser.h
     src/core/main.cpp
 )
+
+IF (BUILD_WITH_METAL)
+  target_link_libraries(libxrf_fit LINK_PUBLIC ${METAL_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
+ENDIF()
 
 # Don't add a 'lib' prefix to the shared library
 set_target_properties(libxrf_fit PROPERTIES PREFIX "")

@@ -90,6 +90,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "fitting/routines/roi_fit_routine.h"
 #include "fitting/routines/svd_fit_routine.h"
 #include "fitting/routines/nnls_fit_routine.h"
+#include "fitting/routines/gpu_nnls_fit_routine.h"
 #include "fitting/routines/hybrid_param_nnls_fit_routine.h"
 
 #include "fitting/optimizers/optimizer.h"
@@ -198,6 +199,43 @@ DLL_EXPORT data_struct::Fit_Count_Dict<T_real>* generate_fit_count_by_shell_dict
 
 // ----------------------------------------------------------------------------
 
+/**
+ * @brief save_fit_counts : Scatter one spectrum's fitted counts into the output maps at
+ *                          pixel (i, j). Shared by the per spectrum and the batched fit
+ *                          paths so both normalise and derive the same way.
+ */
+template<typename T_real>
+DLL_EXPORT void save_fit_counts(std::unordered_map<std::string, T_real>& counts_dict,
+                        const data_struct::Spectra<T_real>* const spectra,
+                        data_struct::Fit_Count_Dict<T_real>* out_fit_counts,
+                        size_t i,
+                        size_t j)
+{
+    //save count / sec
+    for (auto& itr : *out_fit_counts)
+    {
+        if (counts_dict.contains(itr.first))
+        {
+            itr.second(i, j) = counts_dict[itr.first] / spectra->elapsed_livetime();
+        }
+    }
+    (*out_fit_counts)[STR_NUM_ITR](i, j) = counts_dict[STR_NUM_ITR];
+
+    (*out_fit_counts)[STR_RESIDUAL](i, j) = counts_dict[STR_RESIDUAL];
+    // add total fluorescense yield
+    if (out_fit_counts->contains(STR_TOTAL_FLUORESCENCE_YIELD))
+    {
+        (*out_fit_counts)[STR_TOTAL_FLUORESCENCE_YIELD](i, j) = spectra->sum() / spectra->elapsed_livetime();
+    }
+    // add sum coherent and compton
+    if (out_fit_counts->contains(STR_SUM_ELASTIC_INELASTIC_AMP)  && counts_dict.contains(STR_COHERENT_SCT_AMPLITUDE)  && counts_dict.contains(STR_COMPTON_AMPLITUDE) )
+    {
+        (*out_fit_counts)[STR_SUM_ELASTIC_INELASTIC_AMP](i, j) = counts_dict[STR_COHERENT_SCT_AMPLITUDE] + counts_dict[STR_COMPTON_AMPLITUDE];
+    }
+}
+
+// ----------------------------------------------------------------------------
+
 template<typename T_real>
 DLL_EXPORT bool fit_single_spectra(fitting::routines::Base_Fit_Routine<T_real>* fit_routine,
                         const fitting::models::Base_Model<T_real>* const model,
@@ -219,30 +257,111 @@ DLL_EXPORT bool fit_single_spectra(fitting::routines::Base_Fit_Routine<T_real>* 
     {
         std::unordered_map<std::string, T_real> counts_dict;
         fit_routine->fit_spectra(model, spectra, elements_to_fit, counts_dict);
-        //save count / sec
-        for (auto& itr : *out_fit_counts)
-        {
-            if (counts_dict.contains(itr.first))
-            {
-                itr.second(i, j) = counts_dict[itr.first] / spectra->elapsed_livetime();
-            }
-            //(*out_fit_counts)[el_itr.first](i, j) = counts_dict[el_itr.first] / spectra->elapsed_livetime();
-        }
-        (*out_fit_counts)[STR_NUM_ITR](i, j) = counts_dict[STR_NUM_ITR];
-
-        (*out_fit_counts)[STR_RESIDUAL](i, j) = counts_dict[STR_RESIDUAL];
-        // add total fluorescense yield
-        if (out_fit_counts->contains(STR_TOTAL_FLUORESCENCE_YIELD))
-        {
-            (*out_fit_counts)[STR_TOTAL_FLUORESCENCE_YIELD](i, j) = spectra->sum() / spectra->elapsed_livetime();
-        }
-        // add sum coherent and compton
-        if (out_fit_counts->contains(STR_SUM_ELASTIC_INELASTIC_AMP)  && counts_dict.contains(STR_COHERENT_SCT_AMPLITUDE)  && counts_dict.contains(STR_COMPTON_AMPLITUDE) )
-        {
-            (*out_fit_counts)[STR_SUM_ELASTIC_INELASTIC_AMP](i, j) = counts_dict[STR_COHERENT_SCT_AMPLITUDE] + counts_dict[STR_COMPTON_AMPLITUDE];
-        }
+        save_fit_counts(counts_dict, spectra, out_fit_counts, i, j);
     }
     return true;
+}
+
+// ----------------------------------------------------------------------------
+
+/**
+ * @brief fit_spectra_volume_batched : Fit a whole spectra volume through a routine's
+ *                                     batched entry point.
+ *
+ * Used for routines that report supports_batch(), which today means the GPU solvers.
+ * There is no thread pool here on purpose: the routine is already solving thousands of
+ * spectra per dispatch, and its device backend owns a single command queue, so feeding
+ * it from several threads would serialise on that queue anyway.
+ */
+template<typename T_real>
+DLL_EXPORT void fit_spectra_volume_batched(fitting::routines::Base_Fit_Routine<T_real>* fit_routine,
+                        const fitting::models::Base_Model<T_real>* const model,
+                        data_struct::Spectra_Volume<T_real>* spectra_volume,
+                        const data_struct::Fit_Element_Map_Dict<T_real>* const elements_to_fit,
+                        data_struct::Fit_Count_Dict<T_real>* out_fit_counts,
+                        Callback_Func_Status_Def* status_callback = nullptr)
+{
+    const size_t rows = spectra_volume->rows();
+    const size_t cols = spectra_volume->cols();
+    const size_t total = rows * cols;
+    if (total == 0)
+    {
+        return;
+    }
+
+    size_t batch_size = (size_t)std::max(1, fit_routine->preferred_batch_size());
+    batch_size = std::min(batch_size, total);
+
+    std::vector<const data_struct::Spectra<T_real>*> batch;
+    std::vector<std::pair<size_t, size_t>> batch_idx;
+    std::vector<std::unordered_map<std::string, T_real>> batch_counts;
+    batch.reserve(batch_size);
+    batch_idx.reserve(batch_size);
+
+    size_t done = 0;
+
+    auto flush = [&]()
+    {
+        if (batch.empty())
+        {
+            return;
+        }
+        fit_routine->fit_spectra_batch(model, batch, elements_to_fit, batch_counts);
+
+        for (size_t k = 0; k < batch.size(); k++)
+        {
+            const size_t i = batch_idx[k].first;
+            const size_t j = batch_idx[k].second;
+            if (k < batch_counts.size() && false == batch_counts[k].empty())
+            {
+                save_fit_counts(batch_counts[k], batch[k], out_fit_counts, i, j);
+            }
+            else
+            {
+                for (auto& itr : *out_fit_counts)
+                {
+                    itr.second(i, j) = 0;
+                }
+            }
+            done++;
+            if (status_callback != nullptr)
+            {
+                (*status_callback)(done, total);
+            }
+        }
+        batch.clear();
+        batch_idx.clear();
+    };
+
+    for (size_t i = 0; i < rows; i++)
+    {
+        for (size_t j = 0; j < cols; j++)
+        {
+            data_struct::Spectra<T_real>* spectra = &(*spectra_volume)[i][j];
+            if (spectra->size() == 0)
+            {
+                // Matches fit_single_spectra: an empty spectrum zeroes its pixel and is
+                // never handed to the solver.
+                for (auto& itr : *out_fit_counts)
+                {
+                    itr.second(i, j) = 0;
+                }
+                done++;
+                if (status_callback != nullptr)
+                {
+                    (*status_callback)(done, total);
+                }
+                continue;
+            }
+            batch.push_back(spectra);
+            batch_idx.push_back(std::make_pair(i, j));
+            if (batch.size() >= batch_size)
+            {
+                flush();
+            }
+        }
+    }
+    flush();
 }
 
 
@@ -304,28 +423,37 @@ DLL_EXPORT void proc_spectra(data_struct::Spectra_Volume<T_real>* spectra_volume
             element_fit_count_dict = generate_fit_count_dict(&override_params->elements_to_fit, spectra_volume->rows(), spectra_volume->cols(), true);
         }
 
-        for (size_t i = 0; i < spectra_volume->rows(); i++)
+        if (fit_routine->supports_batch())
         {
-            for (size_t j = 0; j < spectra_volume->cols(); j++)
-            {
-                //logD<< i<<" "<<j<<"\n";
-                fit_job_queue->emplace(tp->enqueue(fit_single_spectra<T_real>, fit_routine, detector->model, &(*spectra_volume)[i][j], &override_params->elements_to_fit, element_fit_count_dict, i, j));
-            }
+            // GPU routines solve thousands of spectra per dispatch, so they bypass the
+            // per pixel thread pool entirely and consume the volume in batches.
+            fit_spectra_volume_batched(fit_routine, detector->model, spectra_volume, &override_params->elements_to_fit, element_fit_count_dict, status_callback);
         }
-
-        size_t total_blocks = (spectra_volume->rows() * spectra_volume->cols()) - 1;
-        size_t cur_block = 0;
-        //wait for queue to finish processing
-        while (!fit_job_queue->empty())
+        else
         {
-            auto ret = std::move(fit_job_queue->front());
-            fit_job_queue->pop();
-            ret.get();
-            if (status_callback != nullptr)
+            for (size_t i = 0; i < spectra_volume->rows(); i++)
             {
-                (*status_callback)(cur_block, total_blocks);
+                for (size_t j = 0; j < spectra_volume->cols(); j++)
+                {
+                    //logD<< i<<" "<<j<<"\n";
+                    fit_job_queue->emplace(tp->enqueue(fit_single_spectra<T_real>, fit_routine, detector->model, &(*spectra_volume)[i][j], &override_params->elements_to_fit, element_fit_count_dict, i, j));
+                }
             }
-            cur_block++;
+
+            size_t total_blocks = (spectra_volume->rows() * spectra_volume->cols()) - 1;
+            size_t cur_block = 0;
+            //wait for queue to finish processing
+            while (!fit_job_queue->empty())
+            {
+                auto ret = std::move(fit_job_queue->front());
+                fit_job_queue->pop();
+                ret.get();
+                if (status_callback != nullptr)
+                {
+                    (*status_callback)(cur_block, total_blocks);
+                }
+                cur_block++;
+            }
         }
 
         end = std::chrono::system_clock::now();
@@ -337,6 +465,7 @@ DLL_EXPORT void proc_spectra(data_struct::Spectra_Volume<T_real>* spectra_volume
 
         if (itr.first == data_struct::Fitting_Routines::GAUSS_MATRIX
             || itr.first == data_struct::Fitting_Routines::NNLS
+            || itr.first == data_struct::Fitting_Routines::GPU_NNLS
             || itr.first == data_struct::Fitting_Routines::SVD)
         {
             fitting::routines::Matrix_Optimized_Fit_Routine<T_real>* matrix_fit = (fitting::routines::Matrix_Optimized_Fit_Routine<T_real>*)fit_routine;
