@@ -6873,7 +6873,13 @@ public:
             return false;
         }
 
-        if (false == _open_h5_dataset<T_real>(STR_COUNTS_PER_SEC, fit_grp_id, 3, dims_out, dims_out, dset_id, dataspace_id))
+        // chunk_dims is {1, rows, cols}: one chunk per element. Passing dims_out here (the
+        // full {n_elem, rows, cols}) instead would create the whole dataset as a single
+        // chunk, so every per-element hyperslab write would decompress and recompress the
+        // entire dataset -- the cause of save_element_fits taking minutes for a fit group
+        // created fresh (e.g. GPU_NNLS) versus seconds for one already stored with the
+        // correct per-element chunking.
+        if (false == _open_h5_dataset<T_real>(STR_COUNTS_PER_SEC, fit_grp_id, 3, dims_out, chunk_dims, dset_id, dataspace_id))
         {
             return false;
         }
