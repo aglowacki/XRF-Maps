@@ -2077,20 +2077,20 @@ void HDF5_IO::add_v9_layout(std::string dataset_file)
             hid_t new_arr_space = H5Screate_simple(1, &count2d[1], &count2d[1]);
             _global_close_map.push({new_arr_space, H5O_DATASPACE });
             hid_t arr_type = H5Dget_type(arr_id);
-            _global_close_map.push({arr_id, H5O_DATATYPE });
+            _global_close_map.push({arr_type, H5O_DATATYPE });
             hid_t new_arr_id = H5Dcreate(file_id, "/MAPS/x_axis", arr_type, new_arr_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
             if(new_arr_id > -1)
             {
                 _global_close_map.push({new_arr_id, H5O_DATASET });
                 ArrayXXr<float> arr(count2d[0], count2d[1]);
-                if (H5Dread(arr_id, arr_type, arr_space, arr_space, H5P_DEFAULT, arr.data()) > -1)
+                if (H5Dread(arr_id, H5T_NATIVE_FLOAT, arr_space, arr_space, H5P_DEFAULT, arr.data()) > -1)
                 {
                     ArrayTr<float> new_arr(count2d[1]);
                     for(int x = 0; x< arr.cols(); x++)
                     {
                         new_arr(x) = arr(0,x);
                     }
-                    if(H5Dwrite(new_arr_id, arr_type, new_arr_space, new_arr_space, H5P_DEFAULT, new_arr.data()) < 0)
+                    if(H5Dwrite(new_arr_id, H5T_NATIVE_FLOAT, new_arr_space, new_arr_space, H5P_DEFAULT, new_arr.data()) < 0)
                     {
                         logW<<"Error writing /MAPS/x_axis\n";
                     }
@@ -2136,20 +2136,20 @@ void HDF5_IO::add_v9_layout(std::string dataset_file)
             hid_t new_arr_space = H5Screate_simple(1, &count2d[0], &count2d[0]);
             _global_close_map.push({new_arr_space, H5O_DATASPACE });
             hid_t arr_type = H5Dget_type(arr_id);
-            _global_close_map.push({arr_id, H5O_DATATYPE });
+            _global_close_map.push({arr_type, H5O_DATATYPE });
             hid_t new_arr_id = H5Dcreate(file_id, "/MAPS/y_axis", arr_type, new_arr_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
             if(new_arr_id > -1)
             {
                 _global_close_map.push({new_arr_id, H5O_DATASET });
                 ArrayXXr<float> arr(count2d[0], count2d[1]);
-                if (H5Dread(arr_id, arr_type, arr_space, arr_space, H5P_DEFAULT, arr.data()) > -1)
+                if (H5Dread(arr_id, H5T_NATIVE_FLOAT, arr_space, arr_space, H5P_DEFAULT, arr.data()) > -1)
                 {
                     ArrayTr<float> new_arr(count2d[0]);
                     for(int y = 0; y< arr.rows(); y++)
                     {
                         new_arr(y) = arr(y,0);
                     }
-                    if(H5Dwrite(new_arr_id, arr_type, new_arr_space, new_arr_space, H5P_DEFAULT, new_arr.data()) < 0)
+                    if(H5Dwrite(new_arr_id, H5T_NATIVE_FLOAT, new_arr_space, new_arr_space, H5P_DEFAULT, new_arr.data()) < 0)
                     {
                         logW<<"Error writing /MAPS/y_axis\n";
                     }
