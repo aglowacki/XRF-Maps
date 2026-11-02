@@ -50,6 +50,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define Base_Fit_Routine_H
 
 #include <unordered_map>
+#include <vector>
 
 #include "fitting/optimizers/optimizer.h"
 #include "data_struct/spectra.h"
@@ -94,6 +95,48 @@ public:
                                                       const Spectra<T_real>* const spectra,
                                                       const Fit_Element_Map_Dict<T_real> * const elements_to_fit,
                                                       std::unordered_map<std::string, T_real>& out_counts) = 0;
+
+    /**
+     * @brief supports_batch : True when this routine solves a group of spectra more
+     *                         efficiently in one call than one at a time. Only the GPU
+     *                         routines have a reason to say yes; everything else gains
+     *                         nothing, since the per spectrum work is already the unit
+     *                         the thread pool parallelises over.
+     */
+    virtual bool supports_batch() const { return false; }
+
+    /**
+     * @brief preferred_batch_size : Spectra the routine would like per fit_spectra_batch
+     *                               call. Meaningless unless supports_batch() is true.
+     */
+    virtual int preferred_batch_size() const { return 1; }
+
+    /**
+     * @brief fit_spectra_batch : Fit a group of spectra in one call.
+     *
+     * out_counts is resized to spectra_batch.size(); entry k holds the counts for
+     * spectra_batch[k]. A null or empty spectrum yields an empty map, which the caller
+     * should treat the way it treats an empty spectrum passed to fit_spectra.
+     *
+     * The default walks the batch calling fit_spectra, so any routine remains usable
+     * through this entry point whether or not it overrides it.
+     */
+    virtual void fit_spectra_batch(const models::Base_Model<T_real>* const model,
+                                   const std::vector<const Spectra<T_real>*>& spectra_batch,
+                                   const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
+                                   std::vector<std::unordered_map<std::string, T_real>>& out_counts)
+    {
+        out_counts.clear();
+        out_counts.resize(spectra_batch.size());
+        for (size_t i = 0; i < spectra_batch.size(); i++)
+        {
+            if (spectra_batch[i] == nullptr || spectra_batch[i]->size() == 0)
+            {
+                continue;
+            }
+            fit_spectra(model, spectra_batch[i], elements_to_fit, out_counts[i]);
+        }
+    }
 
     /**
      * @brief get_name : Returns fit routine name

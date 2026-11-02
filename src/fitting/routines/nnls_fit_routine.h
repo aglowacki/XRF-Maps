@@ -100,8 +100,8 @@ protected:
 
     size_t _max_iter;
 
-private:
-
+    // Protected rather than private so GPU_NNLS_Fit_Routine can reuse the fit matrix
+    // this class already builds, and fall back to this class's CPU solve unchanged.
     Eigen::Matrix<T_real, Eigen::Dynamic, Eigen::Dynamic> _fitmatrix;
 
     std::unordered_map<std::string, int> _element_row_index;
