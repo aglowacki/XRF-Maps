@@ -125,7 +125,7 @@ public:
 
     virtual ~GPU_NNLS_Fit_Routine();
 
-    virtual std::string get_name() { return STR_FIT_GPU_NNLS; }
+    virtual std::string get_name() { return STR_FIT_NNLS; } //save in /MAPS/XRF_Analyzed/NNLS 
 
     virtual void initialize(models::Base_Model<T_real>* const model,
                             const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
