@@ -106,6 +106,9 @@ option(AVX "Compule with arch AVX on MSVC" OFF)
 option(SSE2 "Compule with arch SSE2 on MSVC" OFF)
 option(MSVC_DEBUG_INFO_REL "Compule with debug info in Release build for MSVC" OFF)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # generate_git_hash_header.cmake
 # This script is run by add_custom_command to generate the header file.
 

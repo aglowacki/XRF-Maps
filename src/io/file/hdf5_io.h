@@ -60,6 +60,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <stack>
 #include <type_traits>
 #include "hdf5.h"
+#include "io/file/hdf5_raii.h"
 #include "io/file/file_scan.h"
 #include "data_struct/spectra_volume.h"
 #include "data_struct/fit_element_map.h"
@@ -95,6 +96,45 @@ enum GSE_CARS_SAVE_VER {UNKNOWN, XRFMAP, XRMMAP};
 using ROI_Vec = std::vector<std::pair<int, int>>;
 
 DLL_EXPORT herr_t h5_ext_file_info(hid_t loc_id, const char *name, const H5L_info2_t *linfo, void *opdata);
+
+/// Release one tracked handle, after checking it is still live and still the
+/// kind it was recorded as. Returns false (and logs) when it was skipped.
+DLL_EXPORT bool h5_close_tracked(hid_t id, H5_OBJECTS obj);
+
+//-----------------------------------------------------------------------------
+
+/// Scope-bound drain for the shared _global_close_map.
+///
+/// _close_h5_objects() empties the whole stack, which is only correct for the
+/// outermost frame: when one tracked operation calls another, the inner
+/// wholesale drain also closes the caller's still-in-use handles. This guard
+/// records the depth at construction and unwinds only back to it, so a nested
+/// operation releases exactly what it pushed, on every exit path.
+class DLL_EXPORT Global_Close_Scope
+{
+public:
+
+    explicit Global_Close_Scope(std::stack<std::pair<hid_t, H5_OBJECTS> >& close_map)
+        : _close_map(close_map), _base(close_map.size()) {}
+
+    Global_Close_Scope(const Global_Close_Scope&) = delete;
+    Global_Close_Scope& operator=(const Global_Close_Scope&) = delete;
+
+    ~Global_Close_Scope()
+    {
+        while (_close_map.size() > _base)
+        {
+            auto obj = _close_map.top();
+            _close_map.pop();
+            h5_close_tracked(obj.first, obj.second);
+        }
+    }
+
+private:
+
+    std::stack<std::pair<hid_t, H5_OBJECTS> >& _close_map;
+    size_t _base;
+};
 
 //-----------------------------------------------------------------------------
 
@@ -955,6 +995,9 @@ public:
                             raw_xrf_files = File_Scan::inst()->find_all_dataset_files(xpath, base_filename);
                             if(raw_xrf_files.size() == 0)
                             {
+                                // file_id is open at this point; the other
+                                // error exits in this function already drain.
+                                _close_h5_objects(close_map);
                                 return false;
                             }
                         }
@@ -1016,6 +1059,13 @@ public:
             else
             {
                 H5Literate2(xspres_grp_id, H5_INDEX_NAME, H5_ITER_INC, NULL, h5_ext_file_info, &ext_links);
+                // h5_ext_file_info hands back H5Gopen2 ids that nothing else
+                // tracks. Record them so every exit path releases them, and
+                // so they are closed as groups rather than as files.
+                for (const auto& itr : ext_links)
+                {
+                    close_map.push({ itr.second, H5O_GROUP });
+                }
             }
             if(load_ss)
             {
@@ -1033,6 +1083,10 @@ public:
                 else
                 {
                     H5Literate2(ss_grp_id, H5_INDEX_NAME, H5_ITER_INC, NULL, h5_ext_file_info, &ss_ext_links);
+                    for (const auto& itr : ss_ext_links)
+                    {
+                        close_map.push({ itr.second, H5O_GROUP });
+                    }
                 }
                 for(auto itr :  ss_ext_links)
                 {
@@ -1250,7 +1304,10 @@ public:
                 {
                     logW<<"Could not load row "<<i<<" for file "<<itr.first<<"\n";
                 }
-                H5Gclose(itr.second);
+                // Not closed here: ext_links entries are files when opened
+                // from raw_xrf_files and groups when they come from
+                // H5Literate2, so H5Gclose was the wrong call for the first
+                // case. close_map holds each id under its real kind.
             }
 
             scan_info.meta_info.scan_type = STR_SCAN_TYPE_TIME_BASED_2D_MAP;
@@ -5506,6 +5563,8 @@ public:
     bool load_quantification_scalers_BNL(std::string path, data_struct::Params_Override<T_real>* override_values)
     {
         std::lock_guard<std::mutex> lock(_mutex);
+        // Acquires onto _global_close_map but had no drain on any path.
+        Global_Close_Scope close_scope(_global_close_map);
 
         std::chrono::time_point<std::chrono::system_clock> start, end;
         start = std::chrono::system_clock::now();
@@ -6064,6 +6123,8 @@ public:
     bool get_scalers_and_metadata_bnl(std::string path, data_struct::Scan_Info<T_real>& scan_info)
     {
         std::lock_guard<std::mutex> lock(_mutex);
+        // Acquires onto _global_close_map but had no drain on any path.
+        Global_Close_Scope close_scope(_global_close_map);
         std::chrono::time_point<std::chrono::system_clock> start, end;
         start = std::chrono::system_clock::now();
 
@@ -7895,6 +7956,8 @@ public:
     template<typename T_real>
     bool save_interferometers(data_struct::ArrayXXr<T_real>* interf_arr)
     {
+        // Acquires onto _global_close_map but had no drain on any path.
+        Global_Close_Scope close_scope(_global_close_map);
         hid_t scan_grp_id = -1, maps_grp_id = -1, iterf_grp = -1;
         hid_t dset_values_id = -1, dataspace_values_id = -1;
         hsize_t count[2] = { 1,1 };
@@ -7940,7 +8003,7 @@ public:
 
         hid_t scan_grp_id, maps_grp_id, scalers_grp_id, status, error;
         hid_t    file_id, src_maps_grp_id;
-        hid_t    dataspace_detectors_id, dset_detectors_id, attr_detector_names_id;
+        hid_t    dset_detectors_id;
         hid_t   xpos_dataspace_id, xpos_id, ypos_dataspace_id, ypos_id;
         hid_t dataspace_id, dataset_id;
         char* detector_names[256];
@@ -8063,10 +8126,9 @@ public:
             hid_t name_space;
             hid_t mem_name_space = H5Screate_simple(1, &names_cnt[0], &names_cnt[0]);
             _global_close_map.push({ mem_name_space, H5O_DATASPACE });
-            hid_t filetype = H5Tcopy(H5T_FORTRAN_S1);
-            H5Tset_size(filetype, 256);
-            hid_t name_type = H5Tcopy(H5T_C_S1);
-            status = H5Tset_size(name_type, 255);
+            // (A 256-byte H5T_FORTRAN_S1 copy was created here, never used and
+            // never closed; removed.)
+            auto name_type = h5_string_type(H5T_C_S1, 255);
 
             for (hsize_t i = 0; i < nobj; i++)
             {
@@ -8173,17 +8235,19 @@ public:
             }
 
             //save the scalers names
-            dataspace_detectors_id = H5Dget_space(dset_detectors_id);
-            _global_close_map.push({ dataspace_detectors_id, H5O_DATASPACE });
-            attr_detector_names_id = H5Aopen(dset_detectors_id, "Detector Names", H5P_DEFAULT);
-            _global_close_map.push({ dataspace_detectors_id, H5O_ATTRIBUTE });
+            // These four were previously tracked by hand. The attribute was
+            // pushed under the dataspace's id, so the dataspace was closed
+            // twice (once as H5Aclose) and the attribute never at all; ftype
+            // and type were never released on any path.
+            auto dataspace_detectors_id = h5_get_space(dset_detectors_id);
+            auto attr_detector_names_id = h5_open_attr(dset_detectors_id, "Detector Names");
 
             det_rank = H5Sget_simple_extent_ndims(dataspace_detectors_id);
             det_dims_in.resize(det_rank);
             H5Sget_simple_extent_dims(dataspace_detectors_id, &det_dims_in[0], NULL);
 
-            hid_t ftype = H5Aget_type(attr_detector_names_id);
-            hid_t type = H5Tget_native_type(ftype, H5T_DIR_ASCEND);
+            auto ftype = h5_get_attr_type(attr_detector_names_id);
+            auto type = h5_native_type(ftype);
             error = H5Aread(attr_detector_names_id, type, detector_names);
 
             if (error == 0)
@@ -8635,11 +8699,11 @@ public:
             return false;
         }
 
-        hid_t scaler_name_space = H5Dget_space(scaler_name_id);
-        _global_close_map.push({ scaler_name_space, H5O_DATASPACE });
-        hid_t scaler_type = H5Dget_type(scaler_val_id);
-        _global_close_map.push({ scaler_type, H5O_DATATYPE });
-        hid_t scaler_val_space = H5Dget_space(scaler_val_id);
+        // Owned locally rather than pushed onto _global_close_map: the closer
+        // is fixed by the type and release happens on every exit path.
+        auto scaler_name_space = h5_get_space(scaler_name_id);
+        auto scaler_type = h5_get_type(scaler_val_id);
+        auto scaler_val_space = h5_get_space(scaler_val_id);
         hid_t val_rank = H5Sget_simple_extent_ndims(scaler_val_space);
         val_dims_in.resize(val_rank);
         H5Sget_simple_extent_dims(scaler_val_space, &val_dims_in[0], NULL);
@@ -8651,18 +8715,15 @@ public:
         mem_count[1] = val_dims_in[1];
         //names
         hid_t mem_single_space;
+        // _create_memory_space already records the handle; pushing it again
+        // here meant H5Sclose ran against the same id twice.
         _create_memory_space(1, &single_count[0], mem_single_space);
-        _global_close_map.push({ mem_single_space, H5O_DATASPACE });
         hid_t names_id, name_space, units_id, units_space, values_id, value_space;
         single_count[0] = val_dims_in[2];
 
 
-        hid_t dtype = H5Tcopy(H5T_C_S1);
-        H5Tset_size(dtype, 255);
-        _global_close_map.push({ dtype, H5O_DATATYPE });
-        hid_t dtype2 = H5Tcopy(H5T_C_S1);
-        H5Tset_size(dtype2, H5T_VARIABLE);
-        _global_close_map.push({ dtype2, H5O_DATATYPE });
+        auto dtype = h5_string_type(H5T_C_S1, 255);
+        auto dtype2 = h5_string_type(H5T_C_S1, H5T_VARIABLE);
 
         if (false == _open_h5_dataset(STR_NAMES, dtype, scalers_grp_id, 1, &single_count[0], &single_count[0], names_id, name_space))
         {
@@ -8747,16 +8808,17 @@ public:
                 {
                     adata[a] = nullptr;
                 }
-                hid_t aid = H5Aopen_idx(metadata_id, (unsigned int)i);
+                H5Attr aid(H5Aopen_idx(metadata_id, (unsigned int)i));
 
                 char buf[1000];
                 ssize_t len = H5Aget_name(aid, 1000, buf);
                 data_struct::Extra_PV e_pv;
                 e_pv.name = std::string(buf, len);
 
-                hid_t atype = H5Aget_type(aid);
-                hid_t ntype = H5Tget_native_type(atype, H5T_DIR_ASCEND);
-                //hid_t aspece = H5Aget_space(aid);
+                // aid/atype/ntype release at the end of each iteration; ntype
+                // previously leaked one datatype handle per attribute.
+                auto atype = h5_get_attr_type(aid);
+                auto ntype = h5_native_type(atype);
                 H5T_class_t type_class =  H5Tget_class(atype);
                 //if (type_class == H5T_STRING)
                 if (H5Tis_variable_str(atype) > 0)
@@ -8795,9 +8857,6 @@ public:
 
 
                 scan_info.extra_pvs.push_back(e_pv);
-
-                H5Tclose(atype);
-                H5Aclose(aid);
             }
             save_scan_scalers<T_real>(scan_info, nullptr);
 
@@ -9034,6 +9093,8 @@ public:
     template<typename T_real>
     bool save_params_override(data_struct::Params_Override<T_real>* params_override)
     {
+        // Acquires onto _global_close_map but had no drain on any path.
+        Global_Close_Scope close_scope(_global_close_map);
 
         if (params_override == nullptr)
         {
@@ -9691,13 +9752,11 @@ private:
 
         hid_t dataspace_values_id = -1, memoryspace_id = -1, dataspace_names_id = -1, memoryspace_str_id = -1;
         hid_t dataspace_units_id = -1;
-        hid_t filetype, memtype = -1;
         hid_t dset_names_id = -1;
         hid_t dset_units_id = -1;
         hid_t dset_values_id = -1;
         hid_t scalers_grp_id = -1;
-        hid_t dcpl_id = -1;
-        herr_t status;
+        herr_t status = 0;
 
         hsize_t offset[1] = { 0 };
         hsize_t count[1] = { 1 };
@@ -9710,10 +9769,9 @@ private:
 
         _create_memory_space(1, count, memoryspace_str_id);
 
-        filetype = H5Tcopy(H5T_FORTRAN_S1);
-        H5Tset_size(filetype, 256);
-        memtype = H5Tcopy(H5T_C_S1);
-        status = H5Tset_size(memtype, 255);
+        // Owned: released on every exit path, including the early returns below.
+        auto filetype = h5_string_type(H5T_FORTRAN_S1, 256);
+        auto memtype = h5_string_type(H5T_C_S1, 255);
 
         count[0] = 1;
         std::string units;
@@ -9871,11 +9929,8 @@ private:
                     return false;
                 }
 
-                count_3d[0] = 1;
-
-                dcpl_id = H5Pcreate(H5P_DATASET_CREATE);
-                H5Pset_chunk(dcpl_id, 3, count_3d);
-                H5Pset_deflate(dcpl_id, 7);
+                // (A dataset-creation property list was built here and then
+                // never used or closed; removed.)
 
                 count_3d[0] = scaler_maps.size();
                 count[0] = count_3d[0];
@@ -9934,8 +9989,6 @@ private:
                 }
             }
         }
-        H5Tclose(filetype);
-        H5Tclose(memtype);
 
         logI << "Done" << "\n";
 
