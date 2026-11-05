@@ -124,7 +124,7 @@ double gen_residuals_nlopt(const std::vector<double> &x, std::vector<double> &gr
     ud->fit_parameters->from_array_d(x);
 
     // Model spectra based on new fit parameters
-    ud->func(ud->fit_model, ud->fit_parameters, &(ud->energy_range), &(ud->spectra_model));
+    ud->func(*ud->fit_model, ud->fit_parameters, &(ud->energy_range), &(ud->spectra_model));
     // Add background
     ud->spectra_model += ud->spectra_background;
     
@@ -313,7 +313,7 @@ template<typename T_real>
 OPTIMIZER_OUTCOME NLOPT_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fit_params,
                                             const Spectra<T_real>* const spectra,
                                             const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
-                                            const Base_Model<T_real>* const model,
+                                            const Base_Model<T_real>& model,
                                             const Range energy_range,
                                             const ArrayTr<T_real> * const background,
                                             bool use_weights,
@@ -393,7 +393,7 @@ OPTIMIZER_OUTCOME NLOPT_Optimizer<T_real>::minimize(Fit_Parameters<T_real>*fit_p
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-OPTIMIZER_OUTCOME NLOPT_Optimizer<T_real>::minimize_func(const Base_Model<T_real>* const model,
+OPTIMIZER_OUTCOME NLOPT_Optimizer<T_real>::minimize_func(const Base_Model<T_real>& model,
                                                         Fit_Parameters<T_real> *fit_params,
                                                         const Spectra<T_real>* const spectra,
                                                         const Range energy_range,

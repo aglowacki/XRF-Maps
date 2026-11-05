@@ -53,6 +53,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "core/defines.h"
 #include "threadpool.h"
 #include <functional>
+#include <memory>
 
 namespace workflow
 {
@@ -66,7 +67,7 @@ public:
 
     Distributor(size_t num_threads)
     {
-        _thread_pool = new ThreadPool(num_threads);
+        _thread_pool = std::make_unique<ThreadPool>(num_threads);
         _callback_func = std::bind(&Distributor::distribute, this, std::placeholders::_1);
     }
 
@@ -80,10 +81,7 @@ public:
         return *this;
     }
 
-    virtual ~Distributor()
-    {
-        delete _thread_pool;
-    }
+    virtual ~Distributor() = default;
 
     void distribute(T_IN input)
     {
@@ -127,7 +125,10 @@ protected:
 
     std::function<T_OUT (T_IN)> _dist_func;
 
-    ThreadPool *_thread_pool;
+    // Owned. NOTE: the copy ctor/assignment above intentionally do not copy it,
+    // so a copied Distributor has a null pool (it previously held an
+    // uninitialized pointer that ~Distributor would delete).
+    std::unique_ptr<ThreadPool> _thread_pool;
 
     std::mutex _queue_mutex;
 

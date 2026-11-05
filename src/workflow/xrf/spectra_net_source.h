@@ -66,7 +66,7 @@ namespace xrf
 
 //-----------------------------------------------------------------------------
 template<typename T_real>
-class DLL_EXPORT Spectra_Net_Source : public Source<data_struct::Stream_Block<T_real>*>
+class DLL_EXPORT Spectra_Net_Source : public Source<data_struct::Stream_Block_Ptr<T_real>>
 {
 
 public:

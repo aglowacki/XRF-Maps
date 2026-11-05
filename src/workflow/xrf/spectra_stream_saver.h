@@ -65,7 +65,7 @@ namespace xrf
 
 //-----------------------------------------------------------------------------
 template<typename T_real>
-class DLL_EXPORT Spectra_Stream_Saver : public Sink<data_struct::Stream_Block<T_real>* >
+class DLL_EXPORT Spectra_Stream_Saver : public Sink<data_struct::Stream_Block_Ptr<T_real> >
 {
 
 public:
@@ -74,9 +74,9 @@ public:
 
     virtual ~Spectra_Stream_Saver();
 
-    //void save_stream(data_struct::Stream_Block<T_real>* stream_block);
+    //void save_stream(const data_struct::Stream_Block_Ptr<T_real>& stream_block);
 
-    virtual void set_function([[maybe_unused]] std::function<void (data_struct::Stream_Block<T_real>*)> func) { }
+    virtual void set_function([[maybe_unused]] std::function<void (data_struct::Stream_Block_Ptr<T_real>)> func) { }
 
 protected:
 
@@ -134,9 +134,9 @@ protected:
         std::map<int, Detector_Save*> detector_map;
     };
 
-    void _new_dataset(size_t d_hash, data_struct::Stream_Block<T_real>* stream_block);
+    void _new_dataset(size_t d_hash, const data_struct::Stream_Block_Ptr<T_real>& stream_block);
 
-    void _new_detector(Dataset_Save *dataset, data_struct::Stream_Block<T_real>* stream_block);
+    void _new_detector(Dataset_Save *dataset, const data_struct::Stream_Block_Ptr<T_real>& stream_block);
 
     //void _finalize_dataset(Dataset_Save *dataset);
 

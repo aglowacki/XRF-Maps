@@ -127,12 +127,12 @@ public:
 
     virtual std::string get_name() { return STR_FIT_NNLS; } //save in /MAPS/XRF_Analyzed/NNLS 
 
-    virtual void initialize(models::Base_Model<T_real>* const model,
+    virtual void initialize(models::Base_Model<T_real>& model,
                             const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
                             const struct Range energy_range,
                             ArrayTr<T_real>* custom_background);
 
-    void initialize_mp(models::Base_Model<T_real>* const model,
+    void initialize_mp(models::Base_Model<T_real>& model,
                        const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
                        const struct Range energy_range);
 
@@ -153,7 +153,7 @@ public:
      * but not safe to call concurrently on the same instance: the device backend owns
      * a single command queue.
      */
-    virtual void fit_spectra_batch(const models::Base_Model<T_real>* const model,
+    virtual void fit_spectra_batch(const models::Base_Model<T_real>& model,
                                    const std::vector<const Spectra<T_real>*>& spectra_batch,
                                    const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
                                    std::vector<std::unordered_map<std::string, T_real>>& out_counts);

@@ -187,7 +187,7 @@ Stream_Block<T_real> &Stream_Block<T_real>::operator=(const Stream_Block<T_real>
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-void Stream_Block<T_real>::init_fitting_blocks(std::unordered_map<Fitting_Routines, fitting::routines::Base_Fit_Routine<T_real> *> *fit_routines,
+void Stream_Block<T_real>::init_fitting_blocks(const std::unordered_map<Fitting_Routines, std::unique_ptr<fitting::routines::Base_Fit_Routine<T_real> > > *fit_routines,
                                        Fit_Element_Map_Dict<T_real> * elements_to_fit_)
 {
     elements_to_fit = elements_to_fit_;
@@ -200,7 +200,7 @@ void Stream_Block<T_real>::init_fitting_blocks(std::unordered_map<Fitting_Routin
     for(const auto &itr : *fit_routines)
     {
         fitting_blocks[itr.first] = Stream_Fitting_Block<T_real>();
-        fitting_blocks[itr.first].fit_routine = itr.second;
+        fitting_blocks[itr.first].fit_routine = itr.second.get();
         for(auto& e_itr : *elements_to_fit)
         {
             fitting_blocks[itr.first].fit_counts.emplace(std::pair<std::string, T_real> (e_itr.first, (T_real)0.0));

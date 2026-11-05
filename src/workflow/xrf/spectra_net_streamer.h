@@ -65,7 +65,7 @@ namespace xrf
 
 //-----------------------------------------------------------------------------
 template<typename T_real>
-class DLL_EXPORT Spectra_Net_Streamer : public Sink<data_struct::Stream_Block<T_real>* >
+class DLL_EXPORT Spectra_Net_Streamer : public Sink<data_struct::Stream_Block_Ptr<T_real> >
 {
 
 public:
@@ -74,7 +74,7 @@ public:
 
     virtual ~Spectra_Net_Streamer();
 
-    void stream(data_struct::Stream_Block<T_real>* stream_block);
+    void stream(const data_struct::Stream_Block_Ptr<T_real>& stream_block);
 
     void set_send_counts(bool val) {_send_counts = val;}
 

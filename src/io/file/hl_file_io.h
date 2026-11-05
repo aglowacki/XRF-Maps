@@ -152,36 +152,34 @@ void cb_load_spectra_data_helper([[maybe_unused]] size_t row, [[maybe_unused]] s
 // ----------------------------------------------------------------------------
 
 template<typename T_real>
-DLL_EXPORT fitting::routines::Base_Fit_Routine<T_real>* generate_fit_routine(data_struct::Fitting_Routines proc_type, fitting::optimizers::Optimizer<T_real>* optimizer)
+DLL_EXPORT std::unique_ptr<fitting::routines::Base_Fit_Routine<T_real> > generate_fit_routine(data_struct::Fitting_Routines proc_type, fitting::optimizers::Optimizer<T_real>* optimizer)
 {
     //Fitting routines
-    fitting::routines::Base_Fit_Routine<T_real>* fit_routine = nullptr;
     switch (proc_type)
     {
     case data_struct::Fitting_Routines::GAUSS_TAILS:
-        fit_routine = new fitting::routines::Param_Optimized_Fit_Routine<T_real>();
-        ((fitting::routines::Param_Optimized_Fit_Routine<T_real>*)fit_routine)->set_optimizer(optimizer);
-        break;
-    case data_struct::Fitting_Routines::GAUSS_MATRIX:
-        fit_routine = new fitting::routines::Matrix_Optimized_Fit_Routine<T_real>();
-        ((fitting::routines::Matrix_Optimized_Fit_Routine<T_real>*)fit_routine)->set_optimizer(optimizer);
-        break;
-    case data_struct::Fitting_Routines::ROI:
-        fit_routine = new fitting::routines::ROI_Fit_Routine<T_real>();
-        break;
-    case data_struct::Fitting_Routines::SVD:
-        fit_routine = new fitting::routines::SVD_Fit_Routine<T_real>();
-        break;
-    case data_struct::Fitting_Routines::NNLS:
-        fit_routine = new fitting::routines::NNLS_Fit_Routine<T_real>();
-        break;
-    case data_struct::Fitting_Routines::GPU_NNLS:
-        fit_routine = new fitting::routines::GPU_NNLS_Fit_Routine<T_real>();
-        break;
-    default:
-        break;
+    {
+        auto fit_routine = std::make_unique<fitting::routines::Param_Optimized_Fit_Routine<T_real> >();
+        fit_routine->set_optimizer(optimizer);
+        return fit_routine;
     }
-    return fit_routine;
+    case data_struct::Fitting_Routines::GAUSS_MATRIX:
+    {
+        auto fit_routine = std::make_unique<fitting::routines::Matrix_Optimized_Fit_Routine<T_real> >();
+        fit_routine->set_optimizer(optimizer);
+        return fit_routine;
+    }
+    case data_struct::Fitting_Routines::ROI:
+        return std::make_unique<fitting::routines::ROI_Fit_Routine<T_real> >();
+    case data_struct::Fitting_Routines::SVD:
+        return std::make_unique<fitting::routines::SVD_Fit_Routine<T_real> >();
+    case data_struct::Fitting_Routines::NNLS:
+        return std::make_unique<fitting::routines::NNLS_Fit_Routine<T_real> >();
+    case data_struct::Fitting_Routines::GPU_NNLS:
+        return std::make_unique<fitting::routines::GPU_NNLS_Fit_Routine<T_real> >();
+    default:
+        return nullptr;
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -409,7 +407,7 @@ DLL_EXPORT bool init_analysis_job_detectors(data_struct::Analysis_Job<T_real>* a
 
         if (detector->model == nullptr)
         {
-            detector->model = new fitting::models::Gaussian_Model<T_real>();
+            detector->model = std::make_unique<fitting::models::Gaussian_Model<T_real> >();
         }
         data_struct::Params_Override<T_real>* override_params = &(detector->fit_params_override_dict);
 
@@ -449,10 +447,10 @@ DLL_EXPORT bool init_analysis_job_detectors(data_struct::Analysis_Job<T_real>* a
         for (auto proc_type : analysis_job->fitting_routines)
         {
             //Fitting models
-            fitting::routines::Base_Fit_Routine<T_real>* fit_routine = generate_fit_routine(proc_type, analysis_job->optimizer());
+            std::unique_ptr<fitting::routines::Base_Fit_Routine<T_real> > fit_routine = generate_fit_routine(proc_type, analysis_job->optimizer());
             if(fit_routine != nullptr)
             {
-                detector->fit_routines[proc_type] = fit_routine;
+                detector->fit_routines[proc_type] = std::move(fit_routine);
             }
             //reset model fit parameters to defaults
             detector->model->reset_to_default_fit_params();

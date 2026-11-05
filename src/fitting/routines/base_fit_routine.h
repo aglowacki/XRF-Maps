@@ -91,7 +91,7 @@ public:
      * @param row_idx : row index used to save the fitted value back into elements_to_fit class
      * @param col_idx : column index used to save the fitted value back into elements_to_fit class
      */
-    virtual optimizers::OPTIMIZER_OUTCOME fit_spectra(const models::Base_Model<T_real> * const model,
+    virtual optimizers::OPTIMIZER_OUTCOME fit_spectra(const models::Base_Model<T_real>& model,
                                                       const Spectra<T_real>* const spectra,
                                                       const Fit_Element_Map_Dict<T_real> * const elements_to_fit,
                                                       std::unordered_map<std::string, T_real>& out_counts) = 0;
@@ -121,7 +121,7 @@ public:
      * The default walks the batch calling fit_spectra, so any routine remains usable
      * through this entry point whether or not it overrides it.
      */
-    virtual void fit_spectra_batch(const models::Base_Model<T_real>* const model,
+    virtual void fit_spectra_batch(const models::Base_Model<T_real>& model,
                                    const std::vector<const Spectra<T_real>*>& spectra_batch,
                                    const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
                                    std::vector<std::unordered_map<std::string, T_real>>& out_counts)
@@ -151,7 +151,7 @@ public:
      * @param elements_to_fit
      * @param energy_range
      */
-    virtual void initialize(models::Base_Model<T_real>* const model,
+    virtual void initialize(models::Base_Model<T_real>& model,
                             const Fit_Element_Map_Dict<T_real> * const elements_to_fit,
                             const struct Range energy_range,
                             ArrayTr<T_real>* custom_background) = 0;

@@ -57,7 +57,7 @@ namespace xrf
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-Spectra_Stream_Saver<T_real>::Spectra_Stream_Saver() : Sink<data_struct::Stream_Block<T_real>*>()
+Spectra_Stream_Saver<T_real>::Spectra_Stream_Saver() : Sink<data_struct::Stream_Block_Ptr<T_real>>()
 {
     //this->_callback_func = std::bind(&Spectra_Stream_Saver<T_real>::save_stream, this, std::placeholders::_1);
 }
@@ -73,7 +73,7 @@ Spectra_Stream_Saver<T_real>::~Spectra_Stream_Saver()
 // ----------------------------------------------------------------------------
 /*
 template<typename T_real>
-void Spectra_Stream_Saver<T_real>::save_stream(data_struct::Stream_Block<T_real>* stream_block)
+void Spectra_Stream_Saver<T_real>::save_stream(const data_struct::Stream_Block_Ptr<T_real>& stream_block)
 {
 
     size_t d_hash = stream_block->dataset_hash();
@@ -145,7 +145,7 @@ void Spectra_Stream_Saver<T_real>::save_stream(data_struct::Stream_Block<T_real>
 // ----------------------------------------------------------------------------
 
 template<typename T_real>
-void Spectra_Stream_Saver<T_real>::_new_dataset(size_t d_hash, data_struct::Stream_Block<T_real>* stream_block)
+void Spectra_Stream_Saver<T_real>::_new_dataset(size_t d_hash, const data_struct::Stream_Block_Ptr<T_real>& stream_block)
 {
     Dataset_Save *dataset = new Dataset_Save();
     dataset->dataset_directory = stream_block->dataset_directory;
@@ -157,7 +157,7 @@ void Spectra_Stream_Saver<T_real>::_new_dataset(size_t d_hash, data_struct::Stre
 // ----------------------------------------------------------------------------
 
 template<typename T_real>
-void Spectra_Stream_Saver<T_real>::_new_detector(Dataset_Save *dataset, data_struct::Stream_Block<T_real>* stream_block)
+void Spectra_Stream_Saver<T_real>::_new_detector(Dataset_Save *dataset, const data_struct::Stream_Block_Ptr<T_real>& stream_block)
 {
     Detector_Save *detector = new Detector_Save(stream_block->width());
     dataset->detector_map.insert( { stream_block->detector_number(), detector } );

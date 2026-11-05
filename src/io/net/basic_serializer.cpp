@@ -80,7 +80,7 @@ Basic_Serializer<T_real>::~Basic_Serializer()
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-void Basic_Serializer<T_real>::_encode_meta(data_struct::Stream_Block<T_real>* stream_block, std::string& raw_msg)
+void Basic_Serializer<T_real>::_encode_meta(const data_struct::Stream_Block_Ptr<T_real>& stream_block, std::string& raw_msg)
 {
     //TODO:
     // add something to tell if 4 or 8 byte real
@@ -102,7 +102,7 @@ void Basic_Serializer<T_real>::_encode_meta(data_struct::Stream_Block<T_real>* s
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-data_struct::Stream_Block<T_real>* Basic_Serializer<T_real>::_decode_meta(char* message, size_t message_len, size_t& idx)
+data_struct::Stream_Block_Ptr<T_real> Basic_Serializer<T_real>::_decode_meta(char* message, size_t message_len, size_t& idx)
 {
     size_t idx2 = 0;
     int detector_number = 0;
@@ -132,7 +132,7 @@ data_struct::Stream_Block<T_real>* Basic_Serializer<T_real>::_decode_meta(char* 
     memcpy(&theta, message + idx, sizeof(T_real));
     idx += sizeof(T_real);
 
-    data_struct::Stream_Block<T_real>* out_stream_block = new data_struct::Stream_Block<T_real>(detector_number, row, col, height, width);
+    data_struct::Stream_Block_Ptr<T_real> out_stream_block = std::make_shared<data_struct::Stream_Block<T_real> >(detector_number, row, col, height, width);
 
     //find dataset name
     for(size_t i=idx; i < message_len; i++)
@@ -190,7 +190,7 @@ data_struct::Stream_Block<T_real>* Basic_Serializer<T_real>::_decode_meta(char* 
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-void Basic_Serializer<T_real>::_encode_counts(data_struct::Stream_Block<T_real>* stream_block, std::string& raw_msg)
+void Basic_Serializer<T_real>::_encode_counts(const data_struct::Stream_Block_Ptr<T_real>& stream_block, std::string& raw_msg)
 {
     _convert_var_to_bytes(&raw_msg, _tmp_uint, stream_block->fitting_blocks.size(), 4);
 
@@ -212,7 +212,7 @@ void Basic_Serializer<T_real>::_encode_counts(data_struct::Stream_Block<T_real>*
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-std::string Basic_Serializer<T_real>::encode_counts(data_struct::Stream_Block<T_real>* stream_block)
+std::string Basic_Serializer<T_real>::encode_counts(const data_struct::Stream_Block_Ptr<T_real>& stream_block)
 {
     std::string raw_msg = "";
     _encode_meta(stream_block, raw_msg);
@@ -223,7 +223,7 @@ std::string Basic_Serializer<T_real>::encode_counts(data_struct::Stream_Block<T_
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-void Basic_Serializer<T_real>::_decode_counts(char* message, size_t message_len, size_t& idx, data_struct::Stream_Block<T_real>* out_stream_block)
+void Basic_Serializer<T_real>::_decode_counts(char* message, size_t message_len, size_t& idx, const data_struct::Stream_Block_Ptr<T_real>& out_stream_block)
 {
     size_t idx2 = 0;
     T_real val = 0.0;
@@ -275,10 +275,10 @@ void Basic_Serializer<T_real>::_decode_counts(char* message, size_t message_len,
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-data_struct::Stream_Block<T_real>* Basic_Serializer<T_real>::decode_counts(char* message, size_t message_len)
+data_struct::Stream_Block_Ptr<T_real> Basic_Serializer<T_real>::decode_counts(char* message, size_t message_len)
 {
     size_t idx = 0;
-    data_struct::Stream_Block<T_real>* out_stream_block = _decode_meta(message, message_len, idx);
+    data_struct::Stream_Block_Ptr<T_real> out_stream_block = _decode_meta(message, message_len, idx);
 	if (out_stream_block != nullptr && idx < message_len)
 	{
 		_decode_counts(message, message_len, idx, out_stream_block);
@@ -289,7 +289,7 @@ data_struct::Stream_Block<T_real>* Basic_Serializer<T_real>::decode_counts(char*
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-void Basic_Serializer<T_real>::_encode_spectra(data_struct::Stream_Block<T_real>* stream_block, std::string& raw_msg)
+void Basic_Serializer<T_real>::_encode_spectra(const data_struct::Stream_Block_Ptr<T_real>& stream_block, std::string& raw_msg)
 {
 	if (stream_block->spectra == nullptr)
 	{
@@ -338,7 +338,7 @@ void Basic_Serializer<T_real>::_encode_spectra(data_struct::Stream_Block<T_real>
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-std::string Basic_Serializer<T_real>::encode_spectra(data_struct::Stream_Block<T_real>* stream_block)
+std::string Basic_Serializer<T_real>::encode_spectra(const data_struct::Stream_Block_Ptr<T_real>& stream_block)
 {
     std::string raw_msg = "";
     _encode_meta(stream_block, raw_msg);
@@ -349,7 +349,7 @@ std::string Basic_Serializer<T_real>::encode_spectra(data_struct::Stream_Block<T
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-void Basic_Serializer<T_real>::_decode_spectra(char* message, [[maybe_unused]] size_t message_len, size_t& idx, data_struct::Stream_Block<T_real>* out_stream_block)
+void Basic_Serializer<T_real>::_decode_spectra(char* message, [[maybe_unused]] size_t message_len, size_t& idx, const data_struct::Stream_Block_Ptr<T_real>& out_stream_block)
 {
     T_real elt = 0;
     T_real ert = 0;
@@ -398,10 +398,10 @@ void Basic_Serializer<T_real>::_decode_spectra(char* message, [[maybe_unused]] s
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-data_struct::Stream_Block<T_real>* Basic_Serializer<T_real>::decode_spectra(char* message, size_t message_len)
+data_struct::Stream_Block_Ptr<T_real> Basic_Serializer<T_real>::decode_spectra(char* message, size_t message_len)
 {
     size_t idx = 0;
-    data_struct::Stream_Block<T_real>* out_stream_block = _decode_meta(message, message_len, idx);
+    data_struct::Stream_Block_Ptr<T_real> out_stream_block = _decode_meta(message, message_len, idx);
 	if (out_stream_block != nullptr && idx < message_len)
 	{
 		_decode_spectra(message, message_len, idx, out_stream_block);
@@ -412,7 +412,7 @@ data_struct::Stream_Block<T_real>* Basic_Serializer<T_real>::decode_spectra(char
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-std::string Basic_Serializer<T_real>::encode_counts_and_spectra(data_struct::Stream_Block<T_real>* in_stream_block)
+std::string Basic_Serializer<T_real>::encode_counts_and_spectra(const data_struct::Stream_Block_Ptr<T_real>& in_stream_block)
 {
     std::string raw_msg = "";
     _encode_meta(in_stream_block, raw_msg);
@@ -424,10 +424,10 @@ std::string Basic_Serializer<T_real>::encode_counts_and_spectra(data_struct::Str
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-data_struct::Stream_Block<T_real>* Basic_Serializer<T_real>::decode_counts_and_spectra(char* message, size_t message_len)
+data_struct::Stream_Block_Ptr<T_real> Basic_Serializer<T_real>::decode_counts_and_spectra(char* message, size_t message_len)
 {
     size_t idx = 0;
-    data_struct::Stream_Block<T_real>* out_stream_block = _decode_meta(message, message_len, idx);
+    data_struct::Stream_Block_Ptr<T_real> out_stream_block = _decode_meta(message, message_len, idx);
 	if (out_stream_block != nullptr)
 	{
 		if (idx < message_len)

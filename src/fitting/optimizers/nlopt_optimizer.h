@@ -72,13 +72,13 @@ public:
     virtual OPTIMIZER_OUTCOME minimize(Fit_Parameters<T_real>*fit_params,
                                         const Spectra<T_real>* const spectra,
                                         const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
-                                        const Base_Model<T_real>* const model,
+                                        const Base_Model<T_real>& model,
                                         const Range energy_range,
                                         const ArrayTr<T_real> * const background,
                                         bool use_weights,
                                         Callback_Func_Status_Def* status_callback = nullptr);
 
-    virtual OPTIMIZER_OUTCOME minimize_func(const Base_Model<T_real>* const model,
+    virtual OPTIMIZER_OUTCOME minimize_func(const Base_Model<T_real>& model,
                                             Fit_Parameters<T_real>*fit_params,
                                             const Spectra<T_real>* const spectra,
                                             const Range energy_range,

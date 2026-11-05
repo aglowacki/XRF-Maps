@@ -57,7 +57,7 @@ namespace xrf
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-Spectra_Net_Source<T_real>::Spectra_Net_Source(data_struct::Analysis_Job<T_real>* analysis_job, std::string ip_addr, std::string port) : Source<data_struct::Stream_Block<T_real>*>()
+Spectra_Net_Source<T_real>::Spectra_Net_Source(data_struct::Analysis_Job<T_real>* analysis_job, std::string ip_addr, std::string port) : Source<data_struct::Stream_Block_Ptr<T_real>>()
 {
     _analysis_job = analysis_job;
 #ifdef _BUILD_WITH_ZMQ
@@ -103,7 +103,7 @@ void Spectra_Net_Source<T_real>::run()
 #ifdef _BUILD_WITH_ZMQ
     _running = true;
     zmq::message_t token, message;
-    data_struct::Stream_Block<T_real> *stream_block;
+    data_struct::Stream_Block_Ptr<T_real> stream_block;
     while (_running)
     {
         zmq::recv_result_t result = _zmq_socket->recv(token, zmq::recv_flags::none);
@@ -118,6 +118,28 @@ void Spectra_Net_Source<T_real>::run()
                     if(this->_output_callback_func != nullptr && _analysis_job != nullptr)
                     {
                         stream_block = _serializer.decode_spectra((char*)message.data(), message.size());
+                        if (stream_block == nullptr)
+                        {
+                            logE << "Could not decode stream block, skipping message\n";
+                            continue;
+                        }
+                        // A meta-only message carries no spectra. The end-of-dataset
+                        // sentinel is sent that way on purpose (the sender's
+                        // _encode_spectra skips a null spectra), so it must still be
+                        // forwarded or the sink never finalizes the dataset. Fit setup
+                        // below needs the spectra, so it is skipped for these blocks.
+                        if (stream_block->spectra == nullptr)
+                        {
+                            if (stream_block->is_end_block())
+                            {
+                                this->_output_callback_func(stream_block);
+                            }
+                            else
+                            {
+                                logE << "Received stream block with no spectra, skipping message\n";
+                            }
+                            continue;
+                        }
                         _analysis_job->init_fit_routines(stream_block->spectra->size());
                         data_struct::Detector<T_real>* cp = _analysis_job->get_detector(stream_block->detector_number());
 
@@ -128,7 +150,7 @@ void Spectra_Net_Source<T_real>::run()
                         if(cp != nullptr)
                         {
                             stream_block->init_fitting_blocks(&(cp->fit_routines), &(cp->fit_params_override_dict.elements_to_fit));
-                            stream_block->model = cp->model;
+                            stream_block->model = cp->model.get();
                             if(stream_block->dataset_name != nullptr &&  _analysis_job->verbose > 0)
                             {
                                 logI<<"Detector number "<<stream_block->detector_number()<<" is "<<stream_block->dataset_name<<"\n";

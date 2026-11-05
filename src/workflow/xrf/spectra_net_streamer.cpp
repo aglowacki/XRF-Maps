@@ -57,7 +57,7 @@ namespace xrf
 //-----------------------------------------------------------------------------
 
 template<typename T_real>
-Spectra_Net_Streamer<T_real>::Spectra_Net_Streamer(std::string port) : Sink<data_struct::Stream_Block<T_real>*>()
+Spectra_Net_Streamer<T_real>::Spectra_Net_Streamer(std::string port) : Sink<data_struct::Stream_Block_Ptr<T_real>>()
 {
 #ifdef _BUILD_WITH_ZMQ
     _send_counts = true;
@@ -98,7 +98,7 @@ Spectra_Net_Streamer<T_real>::~Spectra_Net_Streamer()
 // ----------------------------------------------------------------------------
 
 template<typename T_real>
-void Spectra_Net_Streamer<T_real>::stream(data_struct::Stream_Block<T_real>* stream_block)
+void Spectra_Net_Streamer<T_real>::stream(const data_struct::Stream_Block_Ptr<T_real>& stream_block)
 {
 #ifdef _BUILD_WITH_ZMQ
 	std::string data;

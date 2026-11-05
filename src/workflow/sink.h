@@ -53,6 +53,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "core/defines.h"
 #include <functional>
 #include <future>
+#include <memory>
 #include <thread>
 #include "workflow/distributor.h"
 
@@ -69,9 +70,7 @@ public:
 	
     Sink()
     {
-        _thread = nullptr;
         _running = false;
-        _delete_block = true;
     }
 
 	Sink(const Sink &)
@@ -89,12 +88,9 @@ public:
         if(_thread != nullptr)
         {
             _thread->join();
-            delete _thread;
         }
-        _thread = nullptr;
+        _thread.reset();
     }
-
-    void set_delete_block(bool val) { _delete_block = val; }
 
     template<typename _T>
     void connect(Distributor<_T, T_IN> *distributor)
@@ -117,15 +113,14 @@ public:
         }
         std::packaged_task<void(void)> task([this](){ this->_execute(); });
         _running = true;
-        _thread = new std::thread(std::move(task));
+        _thread = std::make_unique<std::thread>(std::move(task));
     }
 
     void stop()
     {
         _running = false;
         _thread->join();
-        delete _thread;
-        _thread = nullptr;
+        _thread.reset();
     }
 
     void wait_and_stop()
@@ -140,11 +135,8 @@ public:
     void sink_function(T_IN val)
     {
         _callback_func(val);
-		// if sink thread is not running we have to delete the stream_block
-		if (_delete_block && _running == false)
-		{
-			delete val;
-		}
+        // No manual cleanup: T_IN owns itself (shared_ptr), so the block is
+        // released once this frame and any downstream copies go out of scope.
     }
 
 protected:
@@ -163,12 +155,6 @@ protected:
                     T_IN input_block = ret.get();
 
                     _callback_func(input_block);
-
-                    if(_delete_block && input_block != nullptr)
-                    {
-                        delete input_block;
-						input_block = nullptr;
-                    }
                 }
             }
             else
@@ -190,9 +176,8 @@ protected:
 
     bool _running;
 
-    std::thread *_thread;
-
-    bool _delete_block;
+    // Owned: the worker thread started by start() and joined by stop()/~Sink().
+    std::unique_ptr<std::thread> _thread;
 
 };
 

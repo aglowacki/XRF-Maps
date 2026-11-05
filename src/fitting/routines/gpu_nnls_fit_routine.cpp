@@ -209,7 +209,7 @@ bool GPU_NNLS_Fit_Routine<T_real>::_setup_gpu()
 // ----------------------------------------------------------------------------
 
 template<typename T_real>
-void GPU_NNLS_Fit_Routine<T_real>::initialize(models::Base_Model<T_real>* const model,
+void GPU_NNLS_Fit_Routine<T_real>::initialize(models::Base_Model<T_real>& model,
                                               const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
                                               const struct Range energy_range,
                                               ArrayTr<T_real>* custom_background)
@@ -221,7 +221,7 @@ void GPU_NNLS_Fit_Routine<T_real>::initialize(models::Base_Model<T_real>* const 
 // ----------------------------------------------------------------------------
 
 template<typename T_real>
-void GPU_NNLS_Fit_Routine<T_real>::initialize_mp(models::Base_Model<T_real>* const model,
+void GPU_NNLS_Fit_Routine<T_real>::initialize_mp(models::Base_Model<T_real>& model,
                                                  const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
                                                  const struct Range energy_range)
 {
@@ -232,7 +232,7 @@ void GPU_NNLS_Fit_Routine<T_real>::initialize_mp(models::Base_Model<T_real>* con
 // ----------------------------------------------------------------------------
 
 template<typename T_real>
-void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_real>* const model,
+void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_real>& model,
                                                      const std::vector<const Spectra<T_real>*>& spectra_batch,
                                                      const Fit_Element_Map_Dict<T_real>* const elements_to_fit,
                                                      std::vector<std::unordered_map<std::string, T_real>>& out_counts)
@@ -267,7 +267,7 @@ void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_
     const int m = this->_energy_range.count();
     const int n = (int)this->_fitmatrix.cols();
 
-    Fit_Parameters<T_real> fit_params = model->fit_parameters();
+    Fit_Parameters<T_real> fit_params = model.fit_parameters();
 
     // A custom background does not depend on the spectrum, so resolve it once.
     const bool has_custom_bkg = (this->_custom_background != nullptr);
@@ -546,8 +546,7 @@ void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_
         }
     }
 
-    if (model != nullptr
-        && fit_params.contains(STR_SI_ESCAPE)
+    if (fit_params.contains(STR_SI_ESCAPE)
         && fit_params.at(STR_SI_ESCAPE).value > 0.0)
     {
         ArrayTr<T_real> energy = ArrayTr<T_real>::LinSpaced(this->_energy_range.count(),
@@ -557,7 +556,7 @@ void GPU_NNLS_Fit_Routine<T_real>::fit_spectra_batch(const models::Base_Model<T_
                              + (energy * fit_params.value(STR_ENERGY_SLOPE))
                              + (pow(energy, (T_real)2.0) * fit_params.value(STR_ENERGY_QUADRATIC));
 
-        batch_model += model->escape_peak(batch_model,
+        batch_model += model.escape_peak(batch_model,
                                           ev,
                                           fit_params.value(STR_SI_ESCAPE),
                                           fit_params.value_or(STR_ESCAPE_LINEAR, (T_real)0.0));
